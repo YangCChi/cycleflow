@@ -38,7 +38,7 @@ function redrawMarkers() {
     if (active || region.id <= 3) {
       const label = document.createElement('span')
       label.textContent = region.name
-      marker.bindTooltip(label, { permanent: true, direction: 'bottom', offset: [0, 12], className: 'demo-map-tooltip' })
+      marker.bindTooltip(label, { permanent: true, direction: 'bottom', offset: [0, 12], className: 'demo-map-tooltip' + (active ? ' selected-label' : '') })
     }
   }
 }
