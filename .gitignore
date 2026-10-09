@@ -1,0 +1,14 @@
+.DS_Store
+node_modules/
+dist/
+target/
+.runtime/
+.m2/
+.npm-cache/
+data/
+*.log
+.env
+.env.local
+.idea/
+.vscode/
+backend/src/main/resources/static/
