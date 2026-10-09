@@ -77,4 +77,15 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.reset("unknown"));
         assertEquals(before, service.snapshot());
     }
+    @Test void demoMapPositionsAreStableAndInXipuArea() {
+        Snapshot before = service.snapshot();
+        assertEquals(12, before.regions().size());
+        for (RegionView region : before.regions()) {
+            assertTrue(region.latitude() > 30.75 && region.latitude() < 30.78);
+            assertTrue(region.longitude() > 103.96 && region.longitude() < 104.00);
+        }
+        service.update(1, new RegionUpdate("自定义区域名", 70, 28));
+        assertEquals(before.regions().getFirst().latitude(), service.snapshot().regions().getFirst().latitude());
+        assertEquals(before.regions().getFirst().longitude(), service.snapshot().regions().getFirst().longitude());
+    }
 }

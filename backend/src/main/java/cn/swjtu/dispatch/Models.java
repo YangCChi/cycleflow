@@ -6,7 +6,8 @@ public final class Models {
     private Models() {}
     public record Region(int id, String name, String kind, int stock, int capacity, int safetyStock, double x, double y) {}
     public record RegionView(int id, String name, String kind, int stock, int capacity, int safetyStock,
-                             double x, double y, int predictedOut, int predictedIn, int target,
+                             double x, double y, double latitude, double longitude,
+                             int predictedOut, int predictedIn, int target,
                              int shortage, int surplus, String status, int reservedOut, int reservedIn) {}
     public record Task(String id, int sourceId, int destinationId, int quantity, int vehicle, String status,
                        double distance, int duration, int createdMinute, Integer startedMinute, Integer completedMinute) {}

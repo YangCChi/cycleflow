@@ -45,7 +45,8 @@ public class DispatchService {
             int available = r.stock() - reservedOut + reservedIn;
             int shortage = Math.max(0, target - available), surplus = Math.max(0, available - target);
             String status = shortage > 0 ? "shortage" : r.stock() >= r.capacity() * 0.85 ? "crowded" : "balanced";
-            return new RegionView(r.id(), r.name(), r.kind(), r.stock(), r.capacity(), r.safetyStock(), r.x(), r.y(), flow[0], flow[1], target, shortage, surplus, status, reservedOut, reservedIn);
+            double[] location = DemoLocations.forRegion(r.id());
+            return new RegionView(r.id(), r.name(), r.kind(), r.stock(), r.capacity(), r.safetyStock(), r.x(), r.y(), location[0], location[1], flow[0], flow[1], target, shortage, surplus, status, reservedOut, reservedIn);
         }).toList();
         int ground = views.stream().mapToInt(RegionView::stock).sum();
         int transit = tasks.stream().filter(t -> t.status().equals("RUNNING")).mapToInt(Task::quantity).sum();
