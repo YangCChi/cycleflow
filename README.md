@@ -18,6 +18,12 @@
 
 开发前端：先启动后端，再在 `frontend` 目录运行 `npm run dev`，访问 <http://127.0.0.1:5173>；开发代理默认后端端口为 8080。
 
+### Cloud Studio 运行
+
+工作区需要 Java 21、Maven 3.9、Node.js 22.12 及 npm。安装好后，在 Cloud Studio 编辑器顶部点击「运行」；项目中的 [`.vscode/preview.yml`](.vscode/preview.yml) 会执行 `scripts/start-cloud.sh`，构建前后端并开放 8080 端口。首次构建需要下载依赖，等待终端出现 `Tomcat started on port 8080` 后，在端口面板点击「查看预览」。也可以在云端终端运行 `bash scripts/start-cloud.sh`。
+
+云端启动脚本仅在 Cloud Studio 进程内把监听地址设为 `0.0.0.0`，以便预览访问；本地 `./scripts/start.sh` 仍只监听本机。云端与本地的 H2 数据各自独立。
+
 ## 已实现
 
 - 运营总览：OpenStreetMap 真实街道底图、12 个示范区域、500 辆单车、缺口排序、选中区域查看详情。
