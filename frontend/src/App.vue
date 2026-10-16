@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { Bike, LayoutDashboard, MapPin, ChartNoAxesCombined, Route, FlaskConical, ArrowUpRight, ArrowRight, ChevronRight, Search, SlidersHorizontal, RefreshCw, Play, Pause, Download, X, Check, Clock3, Truck, CircleAlert, Info, PanelLeftClose, Menu, Activity, Leaf, Settings2, CircleHelp, CheckCircle2 } from 'lucide-vue-next'
+import { Bike, LayoutDashboard, MapPin, ChartNoAxesCombined, Route, FlaskConical, ArrowUpRight, ArrowRight, ChevronRight, Search, SlidersHorizontal, RefreshCw, Play, Pause, Download, X, Check, Clock3, Truck, CircleAlert, Info, PanelLeftClose, Menu, Activity, Leaf, Settings2, CheckCircle2 } from 'lucide-vue-next'
 import RegionMap from './components/RegionMap.vue'
 
 const tabs = [
@@ -98,7 +98,7 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
       <a class="brand" href="#overview" @click="navigate('overview')"><div class="brand-icon"><Bike :size="27" stroke-width="1.8"/></div><div><strong>交点<span>CycleFlow</span></strong><small>共享单车智能调度</small></div></a>
       <div class="workspace-label">工作空间 <span>01</span></div>
       <nav aria-label="主导航"><button v-for="tab in tabs" :key="tab.id" :class="['nav-item', { active: current === tab.id }]" :aria-current="current === tab.id ? 'page' : undefined" @click="navigate(tab.id)"><component :is="tab.icon" :size="20"/><span>{{ tab.label }}</span><span v-if="tab.id === 'dispatch' && activeTasks.length" class="nav-badge">{{ activeTasks.length }}</span></button></nav>
-      <div class="sidebar-bottom"><div class="project-card"><div class="project-top"><Leaf :size="19"/><span>校园周边 · 微出行</span></div><strong>西南交通大学</strong><p>犀浦校区研究区域</p><div class="project-rule"></div><span class="version">毕业设计原型 <b>V 0.1</b></span></div><button class="help-link" @click="infoDialog.showModal()"><CircleHelp :size="18"/> 数据与模型说明 <ChevronRight :size="15"/></button><div class="profile"><div class="avatar">交</div><div><strong>演示工作台</strong><span>本地运行 · 单用户</span></div><span class="connection" :class="{ offline: !!error }"></span></div></div>
+      <div class="sidebar-bottom"><div class="project-card"><div class="project-top"><Leaf :size="19"/><span>校园周边 · 微出行</span></div><strong>西南交通大学</strong><p>犀浦校区研究区域</p><div class="project-rule"></div><span class="version">毕业设计原型 <b>V 0.1</b></span></div><div class="profile"><div class="avatar">交</div><div><strong>演示工作台</strong><span>本地运行 · 单用户</span></div><span class="connection" :class="{ offline: !!error }"></span></div></div>
     </aside>
     <div class="main-shell">
       <header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-button" aria-label="打开导航" @click="mobileNav = !mobileNav"><Menu :size="22"/></button><span>调度工作台</span><ChevronRight :size="14"/><strong>{{ page.label }}</strong></div><div class="topbar-right"><span class="demo-badge"><span></span>仿真演示</span><span class="header-separator"></span><MapPin :size="15"/><span class="location-label">成都 · 犀浦</span></div></header>
