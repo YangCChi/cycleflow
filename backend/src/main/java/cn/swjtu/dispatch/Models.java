@@ -10,7 +10,8 @@ public final class Models {
                              int predictedOut, int predictedIn, int target,
                              int shortage, int surplus, String status, int reservedOut, int reservedIn) {}
     public record Task(String id, int sourceId, int destinationId, int quantity, int vehicle, String status,
-                       double distance, int duration, int createdMinute, Integer startedMinute, Integer completedMinute) {}
+                       double distance, int duration, int createdMinute, Integer startedMinute, Integer completedMinute,
+                       String reason) {}
     public record Snapshot(List<RegionView> regions, List<Task> tasks, int minute, String scenario,
                            int totalBikes, int groundBikes, int transitBikes, int completedTasks, double totalDistance) {}
     public record ForecastPoint(String time, int outflow, int inflow, int projectedStock) {}
@@ -19,4 +20,9 @@ public final class Models {
                              int shortageMinutes, double distance, int moved, int endingTotal) {}
     public record ExperimentResult(long seed, String scenario, int durationMinutes, String model,
                                    List<Experiment> results) {}
+    public record PolicySummary(String strategy, double serviceRateAvg, double serviceRateMin, double serviceRateMax,
+                                double shortageMinutesAvg, double distanceAvg, double movedAvg) {}
+    public record ExperimentRun(long seed, List<Experiment> results) {}
+    public record ExperimentSummary(long baseSeed, int runCount, String scenario, int durationMinutes, String model,
+                                    List<PolicySummary> results, List<ExperimentRun> runs) {}
 }

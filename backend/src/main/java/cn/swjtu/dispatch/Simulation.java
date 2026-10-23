@@ -6,6 +6,7 @@ import java.util.*;
 /** Replays identical generated requests for each policy. Successful rides alone create returns. */
 public final class Simulation {
     private Simulation() {}
+    public static final String MODEL_NOTE = "规则需求模型 · 模拟网格距离 · 运输车取车点就近待命假设";
     private record Request(int minute, int source, int destination, int duration) {}
     private record Arrival(int minute, int destination, int quantity, boolean truck) {}
 
@@ -22,7 +23,7 @@ public final class Simulation {
         }
         List<Experiment> results = new ArrayList<>();
         for (String strategy : List.of("none", "threshold", "predictive")) results.add(replay(regions, requests, scenario, start, strategy));
-        return new ExperimentResult(seed, scenario, 180, "规则需求模型 · 模拟网格距离 · 运输车取车点就近待命假设", results);
+        return new ExperimentResult(seed, scenario, 180, MODEL_NOTE, results);
     }
     private static int weighted(List<Region> regions, String scenario, int minute, boolean out, Random random) {
         int total = regions.stream().mapToInt(r -> DemandModel.demand(r, scenario, minute)[out ? 0 : 1]).sum();

@@ -69,6 +69,39 @@ class DispatchServiceTest {
             assertEquals(500, service.snapshot().groundBikes()); assertTrue(service.snapshot().tasks().isEmpty());
         }
     }
+    @Test void generatedTasksExplainWhyTheyWerePlanned() {
+        Snapshot s = service.generate();
+        for (Task t : s.tasks()) {
+            assertNotNull(t.reason());
+            assertFalse(t.reason().isBlank());
+            assertTrue(t.reason().contains("缺口"));
+        }
+        assertEquals(2, service.snapshot().tasks().stream().filter(t -> t.reason() != null).count());
+    }
+    @Test void multiSeedSummaryIsReproducibleAndKeepsEveryRunConsistent() {
+        ExperimentSummary a = service.experimentSummary(42, 3), b = service.experimentSummary(42, 3);
+        assertEquals(a, b);
+        assertEquals(3, a.runCount()); assertEquals(3, a.results().size()); assertEquals(3, a.runs().size());
+        assertEquals(List.of(42L, 43L, 44L), a.runs().stream().map(ExperimentRun::seed).toList());
+        for (PolicySummary policy : a.results()) {
+            assertTrue(policy.serviceRateMin() <= policy.serviceRateAvg());
+            assertTrue(policy.serviceRateAvg() <= policy.serviceRateMax());
+            assertTrue(policy.serviceRateMin() >= 0 && policy.serviceRateMax() <= 100);
+        }
+        for (ExperimentRun run : a.runs()) {
+            assertEquals(3, run.results().size());
+            for (Experiment result : run.results()) {
+                assertEquals(1260, result.requested()); assertEquals(500, result.endingTotal());
+            }
+        }
+        assertEquals(500, service.snapshot().groundBikes());
+        assertTrue(service.snapshot().tasks().isEmpty());
+    }
+    @Test void multiSeedSummaryRejectsOutOfRangeRuns() {
+        assertThrows(ResponseStatusException.class, () -> service.experimentSummary(42, 0));
+        assertThrows(ResponseStatusException.class, () -> service.experimentSummary(42, 11));
+        assertThrows(ResponseStatusException.class, () -> service.experimentSummary(999999, 5));
+    }
     @Test void experimentRejectsActiveDispatch() {
         service.generate(); assertThrows(ResponseStatusException.class, () -> service.experiment(42));
     }

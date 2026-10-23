@@ -29,7 +29,7 @@ public class DispatchService {
     }
     private Region region(int id) { return regions().stream().filter(r -> r.id() == id).findFirst().orElseThrow(() -> error("停车区域不存在")); }
     private List<Task> tasks() {
-        return db.query("SELECT * FROM dispatch_tasks ORDER BY created_minute DESC, id DESC", (rs, row) -> new Task(rs.getString("id"), rs.getInt("source_id"), rs.getInt("destination_id"), rs.getInt("quantity"), rs.getInt("vehicle"), rs.getString("status"), rs.getDouble("distance"), rs.getInt("duration"), rs.getInt("created_minute"), (Integer)rs.getObject("started_minute"), (Integer)rs.getObject("completed_minute")));
+        return db.query("SELECT * FROM dispatch_tasks ORDER BY created_minute DESC, id DESC", (rs, row) -> new Task(rs.getString("id"), rs.getInt("source_id"), rs.getInt("destination_id"), rs.getInt("quantity"), rs.getInt("vehicle"), rs.getString("status"), rs.getDouble("distance"), rs.getInt("duration"), rs.getInt("created_minute"), (Integer)rs.getObject("started_minute"), (Integer)rs.getObject("completed_minute"), rs.getString("reason")));
     }
     private static ResponseStatusException error(String message) { return new ResponseStatusException(HttpStatus.CONFLICT, message); }
     private static boolean active(Task t) { return t.status().equals("PLANNED") || t.status().equals("RUNNING"); }
@@ -107,9 +107,11 @@ public class DispatchService {
                 if (destination == null) break;
                 Region source = all.stream().filter(r -> supply.get(r.id()) > 0 && r.id() != destination.id()).min(Comparator.comparingDouble(r -> DemandModel.distance(r, destination))).orElse(null);
                 if (source == null) break;
-                int quantity = Math.min(20, Math.min(need.get(destination.id()), supply.get(source.id())));
+                int destinationNeed = need.get(destination.id()), sourceSupply = supply.get(source.id());
+                int quantity = Math.min(20, Math.min(destinationNeed, sourceSupply));
                 double distance = DemandModel.distance(source, destination);
-                db.update("INSERT INTO dispatch_tasks(id,source_id,destination_id,quantity,vehicle,status,distance,duration,created_minute) VALUES (?,?,?,?,?,?,?,?,?)", "JD-" + UUID.randomUUID().toString().substring(0,8).toUpperCase(), source.id(), destination.id(), quantity, vehicle, "PLANNED", distance, DemandModel.duration(distance, quantity), minute());
+                String reason = "目的区域缺口 %d 辆；源区域可调出 %d 辆；按就近匹配，本次搬运 %d 辆".formatted(destinationNeed, sourceSupply, quantity);
+                db.update("INSERT INTO dispatch_tasks(id,source_id,destination_id,quantity,vehicle,status,distance,duration,created_minute,reason) VALUES (?,?,?,?,?,?,?,?,?,?)", "JD-" + UUID.randomUUID().toString().substring(0,8).toUpperCase(), source.id(), destination.id(), quantity, vehicle, "PLANNED", distance, DemandModel.duration(distance, quantity), minute(), reason);
                 supply.compute(source.id(), (k,n) -> n - quantity); need.compute(destination.id(), (k,n) -> n - quantity); generated = true;
             }
             if (!generated) throw error(snapshot.tasks().stream().anyMatch(DispatchService::active) ? "运输车已有待执行或在途任务，请先完成当前任务" : "当前没有可执行的调度任务：供需已平衡或没有富余车辆");
@@ -162,7 +164,37 @@ public class DispatchService {
     }
 
     public synchronized ExperimentResult experiment(long seed) {
-        if (tasks().stream().anyMatch(DispatchService::active)) throw error("请先完成或取消调度任务，再运行独立实验");
+        ensureNoActiveTasks();
         return Simulation.run(regions(), state("scenario"), minute(), seed);
     }
+
+    public synchronized ExperimentSummary experimentSummary(long baseSeed, int runCount) {
+        if (runCount < 1 || runCount > 10) throw error("重复次数须在 1～10 之间");
+        if (baseSeed < 0 || baseSeed + runCount - 1 > 999999) throw error("随机种子须在 0～999999 之间");
+        ensureNoActiveTasks();
+        List<ExperimentRun> runs = new ArrayList<>();
+        for (int i = 0; i < runCount; i++) {
+            long seed = baseSeed + i;
+            runs.add(new ExperimentRun(seed, Simulation.run(regions(), state("scenario"), minute(), seed).results()));
+        }
+        List<String> strategies = List.of("none", "threshold", "predictive");
+        List<PolicySummary> summaries = new ArrayList<>();
+        for (int i = 0; i < strategies.size(); i++) {
+            final int index = i;
+            DoubleSummaryStatistics rates = runs.stream()
+                    .mapToDouble(run -> run.results().get(index).serviceRate()).summaryStatistics();
+            double shortageAvg = runs.stream().mapToDouble(run -> run.results().get(index).shortageMinutes()).average().orElse(0);
+            double distanceAvg = runs.stream().mapToDouble(run -> run.results().get(index).distance()).average().orElse(0);
+            double movedAvg = runs.stream().mapToDouble(run -> run.results().get(index).moved()).average().orElse(0);
+            summaries.add(new PolicySummary(strategies.get(i), round1(rates.getAverage()), round1(rates.getMin()),
+                    round1(rates.getMax()), round1(shortageAvg), round1(distanceAvg), round1(movedAvg)));
+        }
+        return new ExperimentSummary(baseSeed, runCount, state("scenario"), 180, Simulation.MODEL_NOTE, summaries, runs);
+    }
+
+    private void ensureNoActiveTasks() {
+        if (tasks().stream().anyMatch(DispatchService::active)) throw error("请先完成或取消调度任务，再运行独立实验");
+    }
+
+    private static double round1(double value) { return Math.round(value * 10) / 10.0; }
 }

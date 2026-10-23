@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { Bike, LayoutDashboard, MapPin, ChartNoAxesCombined, Route, FlaskConical, ArrowUpRight, ArrowRight, ChevronRight, Search, SlidersHorizontal, RefreshCw, Play, Pause, Download, X, Check, Clock3, Truck, CircleAlert, Info, PanelLeftClose, Menu, Activity, Leaf, Settings2, CheckCircle2 } from 'lucide-vue-next'
+import { Bike, LayoutDashboard, MapPin, ChartNoAxesCombined, Route, FlaskConical, ArrowUpRight, ArrowRight, ChevronRight, Search, SlidersHorizontal, RefreshCw, Play, Pause, Download, X, Check, Clock3, Truck, CircleAlert, Info, PanelLeftClose, Menu, Activity, Leaf, Settings2, CheckCircle2, History, ClipboardList } from 'lucide-vue-next'
 import RegionMap from './components/RegionMap.vue'
 
 const tabs = [
@@ -8,12 +8,15 @@ const tabs = [
   { id: 'regions', label: '停车区域', icon: MapPin, en: 'REGIONS' },
   { id: 'forecast', label: '需求预测', icon: ChartNoAxesCombined, en: 'FORECAST' },
   { id: 'dispatch', label: '智能调度', icon: Route, en: 'DISPATCH' },
+  { id: 'records', label: '任务记录', icon: History, en: 'RECORDS' },
   { id: 'experiments', label: '仿真实验', icon: FlaskConical, en: 'EXPERIMENT' },
 ]
-const current = ref(tabs.some(t => t.id === location.hash.slice(1)) ? location.hash.slice(1) : 'overview')
+const hashId = () => location.hash.replace(/^#\/?/, '')
+const current = ref(tabs.some(t => t.id === hashId()) ? hashId() : 'overview')
 const page = computed(() => tabs.find(t => t.id === current.value))
 const data = ref(null), loading = ref(true), busy = ref(false), error = ref(''), toast = ref(''), selected = ref(1), search = ref(''), filter = ref('all'), mobileNav = ref(false)
-const forecasting = ref(false), forecast = ref([]), experiment = ref(null), seed = ref(42), experimenting = ref(false), playing = ref(false)
+const forecasting = ref(false), forecast = ref([]), summary = ref(null), seed = ref(42), runs = ref(5), experimenting = ref(false), playing = ref(false)
+const taskFilter = ref('all'), taskSearch = ref('')
 const editDialog = ref(null), resetDialog = ref(null), infoDialog = ref(null), edit = ref({}), pendingScenario = ref('morning'), formError = ref('')
 const scenarioNames = { morning: '工作日早高峰', evening: '工作日晚高峰', weekend: '周末出行' }
 const typeNames = { gate: '校门接驳', metro: '轨道接驳', residential: '居住区域', commercial: '商业区域' }
@@ -26,6 +29,20 @@ const alerts = computed(() => [...regions.value].filter(r => r.shortage > 0).sor
 const shortage = computed(() => alerts.value.reduce((sum,r) => sum + r.shortage, 0))
 const selectedRegion = computed(() => regions.value.find(r => r.id === selected.value) || regions.value[0])
 const filteredRegions = computed(() => regions.value.filter(r => r.name.includes(search.value) && (filter.value === 'all' || (filter.value === 'shortage' ? r.shortage > 0 : r.kind === filter.value))))
+const taskStats = computed(() => {
+  const stats = { total: tasks.value.length, planned: 0, running: 0, completed: 0, cancelled: 0, moved: 0, distance: 0 }
+  for (const task of tasks.value) {
+    const key = task.status.toLowerCase()
+    if (key in stats) stats[key]++
+    if (task.status === 'COMPLETED') { stats.moved += task.quantity; stats.distance += task.distance }
+  }
+  return { ...stats, pending: stats.planned + stats.running }
+})
+const filteredTasks = computed(() => {
+  const keyword = taskSearch.value.trim().toLowerCase()
+  return tasks.value.filter(task => (taskFilter.value === 'all' || task.status === taskFilter.value)
+    && (!keyword || task.id.toLowerCase().includes(keyword) || regionName(task.sourceId).toLowerCase().includes(keyword) || regionName(task.destinationId).toLowerCase().includes(keyword)))
+})
 const time = minute => `${String(Math.floor(minute / 60) % 24).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
 const regionName = id => regions.value.find(r => r.id === id)?.name || '未知区域'
 let interval, toastTimer, forecastRequest = 0
@@ -45,12 +62,12 @@ async function load() {
 async function mutate(path, body, message, method = 'POST') {
   if (busy.value) return false
   busy.value = true
-  try { data.value = await api(path, method, body); experiment.value = null; if (message) notify(message); return true }
+  try { data.value = await api(path, method, body); summary.value = null; if (message) notify(message); return true }
   catch (e) { notify(e.message); return false }
   finally { busy.value = false }
 }
 function navigate(id) { current.value = id; location.hash = id; mobileNav.value = false }
-function onHash() { const id = location.hash.slice(1); if (tabs.some(t => t.id === id)) current.value = id }
+function onHash() { const id = hashId(); if (tabs.some(t => t.id === id)) current.value = id }
 async function generate() { if (await mutate('/dispatch/generate', null, '已生成调度方案，车辆与停车容量已检查')) navigate('dispatch') }
 async function advance() { await mutate('/simulation/advance'); if (!tasks.value.some(t => t.status === 'RUNNING')) playing.value = false }
 function togglePlay() {
@@ -74,14 +91,39 @@ async function loadForecast() {
 }
 async function runExperiment() {
   if (!Number.isInteger(Number(seed.value)) || Number(seed.value) < 0 || Number(seed.value) > 999999) return notify('随机种子请输入 0～999999 的整数')
+  if (runs.value < 1 || runs.value > 10) return notify('重复次数须在 1～10 之间')
+  if (Number(seed.value) + runs.value - 1 > 999999) return notify('种子范围超出 0～999999，请降低起始种子或重复次数')
   experimenting.value = true
-  try { experiment.value = await api('/experiments?seed=' + seed.value); notify('三种策略已完成相同请求序列的独立回放') }
-  catch (e) { notify(e.message) } finally { experimenting.value = false }
+  try {
+    summary.value = await api(`/experiments/summary?seed=${seed.value}&runs=${runs.value}`)
+    notify(runs.value > 1 ? `已用 ${runs.value} 个连续种子完成对比，展示均值与范围` : '三种策略已完成相同请求序列的独立回放')
+  } catch (e) { notify(e.message) } finally { experimenting.value = false }
+}
+function saveCsv(rows, filename) {
+  const blob = new Blob(['\ufeff' + rows.map(row => row.map(cell => `"${String(cell).replaceAll('"','""')}"`).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url)
 }
 function downloadCsv() {
-  const rows = [['策略','请求数','成功借车','借车成功率(%)','区域缺车分钟','取送里程(km)','搬运数量','车辆总数'], ...experiment.value.results.map(r => [strategyNames[r.strategy],r.requested,r.served,r.serviceRate,r.shortageMinutes,r.distance,r.moved,r.endingTotal])]
-  const blob = new Blob(['\ufeff' + rows.map(r => r.join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = `交点-仿真实验-${experiment.value.scenario}-seed${experiment.value.seed}.csv`; a.click(); URL.revokeObjectURL(url)
+  const rows = [
+    ['策略','平均借车成功率(%)','最低成功率(%)','最高成功率(%)','平均缺车分钟','平均搬运里程(km)','平均搬运量(辆)'],
+    ...summary.value.results.map(r => [strategyNames[r.strategy],r.serviceRateAvg,r.serviceRateMin,r.serviceRateMax,r.shortageMinutesAvg,r.distanceAvg,r.movedAvg]),
+    [],
+    ['逐种子明细'],
+    ['种子','不调度成功率(%)','阈值就近成功率(%)','预测优先成功率(%)','不调度缺车分钟','阈值缺车分钟','预测缺车分钟']
+  ]
+  for (const run of summary.value.runs) {
+    const by = Object.fromEntries(run.results.map(r => [r.strategy, r]))
+    rows.push([run.seed,by.none.serviceRate,by.threshold.serviceRate,by.predictive.serviceRate,by.none.shortageMinutes,by.threshold.shortageMinutes,by.predictive.shortageMinutes])
+  }
+  saveCsv(rows, `交点-仿真实验-${summary.value.scenario}-seed${summary.value.baseSeed}-runs${summary.value.runCount}.csv`)
+}
+function downloadTasksCsv() {
+  if (!filteredTasks.value.length) return notify('当前没有可导出的任务记录')
+  const rows = [
+    ['任务编号','状态','取车区域','送车区域','数量(辆)','运输车','里程(km)','时长(分钟)','创建时间','开始时间','完成时间','生成原因'],
+    ...filteredTasks.value.map(t => [t.id,statusNames[t.status],regionName(t.sourceId),regionName(t.destinationId),t.quantity,'0'+t.vehicle,t.distance,t.duration,time(t.createdMinute),t.startedMinute != null ? time(t.startedMinute) : '',t.completedMinute != null ? time(t.completedMinute) : '',t.reason || ''])
+  ]
+  saveCsv(rows, `交点-任务记录-${data.value?.scenario || 'demo'}.csv`)
 }
 const forecastMax = computed(() => Math.max(20, ...forecast.value.flatMap(p => [p.outflow, p.inflow])) )
 const plotLine = key => forecast.value.map((p,i) => `${65+i*85},${255-p[key]/forecastMax.value*200}`).join(' ')
@@ -106,7 +148,7 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
         <div v-if="loading" class="loading-panel"><div class="spinner"></div><h2>正在加载调度工作台</h2><p>读取停车区域与任务记录</p></div>
         <div v-else-if="error" class="loading-panel"><CircleAlert :size="40"/><h2>服务暂不可用</h2><p>{{ error }}</p><button class="btn primary" @click="load">重新连接</button></div>
         <template v-else-if="data">
-          <section class="page-heading"><div><span class="eyebrow">{{ page.en }}</span><h1>{{ page.label }}<span v-if="current === 'overview'" class="heading-dot"></span></h1><p>{{ { overview: '从供需变化，到每一次精准调度。', regions: '管理服务区域的停车容量与安全库存。', forecast: '提前看见需求，安排下一次补车。', dispatch: '将补车建议转化为可执行的搬运任务。', experiments: '用相同的出行请求，比较不同调度策略。' }[current] }}</p></div><div class="heading-actions"><template v-if="current === 'overview' || current === 'dispatch'"><button class="btn" :disabled="busy" @click="requestReset()"><RefreshCw :size="16"/>重置场景</button><button class="btn primary" :disabled="busy" @click="generate"><Route :size="17"/>{{ busy ? '处理中…' : '生成调度方案' }}</button></template><button v-else class="btn" @click="infoDialog.showModal()"><Info :size="16"/>数据说明</button></div></section>
+          <section class="page-heading"><div><span class="eyebrow">{{ page.en }}</span><h1>{{ page.label }}<span v-if="current === 'overview'" class="heading-dot"></span></h1><p>{{ { overview: '从供需变化，到每一次精准调度。', regions: '管理服务区域的停车容量与安全库存。', forecast: '提前看见需求，安排下一次补车。', dispatch: '将补车建议转化为可执行的搬运任务。', records: '查看每一次补车从生成到送达的完整记录。', experiments: '用相同的出行请求，比较不同调度策略。' }[current] }}</p></div><div class="heading-actions"><template v-if="current === 'overview' || current === 'dispatch'"><button class="btn" :disabled="busy" @click="requestReset()"><RefreshCw :size="16"/>重置场景</button><button class="btn primary" :disabled="busy" @click="generate"><Route :size="17"/>{{ busy ? '处理中…' : '生成调度方案' }}</button></template><template v-else-if="current === 'records'"><button class="btn" @click="downloadTasksCsv"><Download :size="16"/>导出任务 CSV</button></template><button v-else class="btn" @click="infoDialog.showModal()"><Info :size="16"/>数据说明</button></div></section>
 
           <template v-if="current === 'overview'">
             <div class="stats-grid">
@@ -136,13 +178,50 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
 
           <template v-if="current === 'dispatch'">
             <div class="dispatch-toolbar"><div><span class="live-dot"></span><strong>运输资源</strong><span>2 辆运输车 · 每车载量 20 辆</span></div><div class="clock-controls"><Clock3 :size="17"/><strong>{{ time(data.minute) }}</strong><button class="btn compact" :disabled="busy" @click="advance">+5 分钟</button><button class="btn compact" @click="togglePlay"><Pause v-if="playing" :size="15"/><Play v-else :size="15"/>{{ playing ? '暂停' : '播放' }}</button></div></div>
-            <div class="dispatch-layout"><article class="panel dispatch-map"><div class="panel-heading"><h2>搬运路线</h2><span>两点取送 · 估算距离</span></div><RegionMap :regions="regions" :selected="selected" :tasks="tasks" @select="selected = $event"/><div class="table-footer"><Info :size="15"/>按缺口优先、就近供给生成；路线为模拟路网，不代表实测导航。</div></article><div class="task-list"><div v-if="!tasks.length" class="panel task-empty"><Route :size="42"/><h2>准备好下一次调度</h2><p>根据区域缺口、富余库存和运输车载量，生成可执行任务。</p><button class="btn primary" :disabled="busy" @click="generate">生成调度方案</button></div><article v-for="task in tasks" :key="task.id" class="panel task-card"><div class="task-header"><span>{{ task.id }}</span><span :class="['task-status', task.status.toLowerCase() ]">{{ statusNames[task.status] }}</span></div><div class="task-route"><div class="route-line"><i></i><span></span><i></i></div><div><strong>{{ regionName(task.sourceId) }}</strong><span>取车点</span><strong>{{ regionName(task.destinationId) }}</strong><span>送车点</span></div><div class="task-quantity">{{ task.quantity }}<small>辆</small></div></div><div class="task-meta"><span><Truck :size="14"/>运输车 0{{ task.vehicle }}</span><span>{{ task.distance.toFixed(1) }} km</span><span><Clock3 :size="14"/>{{ task.duration }} 分钟</span></div><div class="task-actions" v-if="task.status === 'PLANNED'"><button class="btn compact" :disabled="busy" @click="mutate(`/dispatch/${task.id}/cancel`,null,'任务已取消，预留库存已释放')">取消任务</button><button class="btn primary compact" :disabled="busy" @click="mutate(`/dispatch/${task.id}/start`,null,'取车完成，单车进入运输状态')"><Play :size="14"/>开始执行</button></div><div v-else-if="task.status === 'RUNNING'" class="task-progress"><span>预计 {{ time(task.startedMinute + task.duration) }} 送达</span><div class="stock-track"><div :style="{ width:Math.min(100,(data.minute-task.startedMinute)/task.duration*100)+'%' }"></div></div></div><div v-else-if="task.status === 'COMPLETED'" class="task-completed"><Check :size="15"/>{{ time(task.completedMinute) }} 已送达并更新库存</div></article></div></div>
+            <div class="plan-summary"><div class="plan-summary-icon"><Activity :size="18"/></div><div class="plan-summary-copy"><strong>{{ activeTasks.length ? '任务已占用运输资源' : alerts.length ? '当前存在待补缺口' : '当前供需平衡' }}</strong><p>{{ alerts.length ? alerts.slice(0, 3).map(r => r.name + ' ' + r.shortage + ' 辆').join(' · ') : '所有区域的可用库存均不低于 30 分钟目标。' }}</p></div><div class="plan-summary-metrics"><span>待补区域 <b>{{ alerts.length }}</b></span><span>剩余缺口 <b>{{ shortage }}</b> 辆</span><span>在途 <b>{{ data.transitBikes }}</b> 辆</span></div></div>
+            <div class="dispatch-layout"><article class="panel dispatch-map"><div class="panel-heading"><h2>搬运路线</h2><span>两点取送 · 估算距离</span></div><RegionMap :regions="regions" :selected="selected" :tasks="tasks" @select="selected = $event"/><div class="table-footer"><Info :size="15"/>按缺口优先、就近供给生成；路线为模拟路网，不代表实测导航。</div></article><div class="task-list"><div v-if="!tasks.length" class="panel task-empty"><Route :size="42"/><h2>准备好下一次调度</h2><p>根据区域缺口、富余库存和运输车载量，生成可执行任务。</p><button class="btn primary" :disabled="busy" @click="generate">生成调度方案</button></div><article v-for="task in tasks" :key="task.id" class="panel task-card"><div class="task-header"><span>{{ task.id }}</span><span :class="['task-status', task.status.toLowerCase() ]">{{ statusNames[task.status] }}</span></div><div class="task-route"><div class="route-line"><i></i><span></span><i></i></div><div><strong>{{ regionName(task.sourceId) }}</strong><span>取车点</span><strong>{{ regionName(task.destinationId) }}</strong><span>送车点</span></div><div class="task-quantity">{{ task.quantity }}<small>辆</small></div></div><div class="task-meta"><span><Truck :size="14"/>运输车 0{{ task.vehicle }}</span><span>{{ task.distance.toFixed(1) }} km</span><span><Clock3 :size="14"/>{{ task.duration }} 分钟</span></div><p v-if="task.reason" class="task-reason">{{ task.reason }}</p><div class="task-actions" v-if="task.status === 'PLANNED'"><button class="btn compact" :disabled="busy" @click="mutate(`/dispatch/${task.id}/cancel`,null,'任务已取消，预留库存已释放')">取消任务</button><button class="btn primary compact" :disabled="busy" @click="mutate(`/dispatch/${task.id}/start`,null,'取车完成，单车进入运输状态')"><Play :size="14"/>开始执行</button></div><div v-else-if="task.status === 'RUNNING'" class="task-progress"><span>预计 {{ time(task.startedMinute + task.duration) }} 送达</span><div class="stock-track"><div :style="{ width:Math.min(100,(data.minute-task.startedMinute)/task.duration*100)+'%' }"></div></div></div><div v-else-if="task.status === 'COMPLETED'" class="task-completed"><Check :size="15"/>{{ time(task.completedMinute) }} 已送达并更新库存</div></article></div></div>
+          </template>
+
+          <template v-if="current === 'records'">
+            <div class="stats-grid records-stats">
+              <article class="stat-card"><div class="stat-head"><span>任务总数</span><ClipboardList :size="19"/></div><div class="stat-value">{{ taskStats.total }}<small>项</small></div><div class="stat-foot"><span class="neutral-pill">{{ taskStats.pending }} 项未完成</span><span>全部历史记录</span></div></article>
+              <article class="stat-card"><div class="stat-head"><span>已完成任务</span><CheckCircle2 :size="19"/></div><div class="stat-value">{{ taskStats.completed }}<small>项</small></div><div class="stat-foot"><span class="green-pill">搬运 {{ taskStats.moved }} 辆</span><span>{{ taskStats.distance.toFixed(1) }} km</span></div></article>
+              <article class="stat-card"><div class="stat-head"><span>待执行</span><Clock3 :size="19"/></div><div class="stat-value">{{ taskStats.planned }}<small>项</small></div><div class="stat-foot"><span class="neutral-pill">等待取车</span><span>库存已预留</span></div></article>
+              <article class="stat-card"><div class="stat-head"><span>运输中 / 已取消</span><Truck :size="19"/></div><div class="stat-value">{{ taskStats.running }}<small> / {{ taskStats.cancelled }}</small></div><div class="stat-foot"><span class="green-pill">在途 {{ data.transitBikes }} 辆</span><span>取消即释放预留</span></div></article>
+            </div>
+            <article class="panel table-panel records-panel">
+              <div class="table-toolbar">
+                <div class="search-field"><Search :size="18"/><input v-model="taskSearch" placeholder="搜索任务编号或区域" aria-label="搜索任务记录"/></div>
+                <select v-model="taskFilter" aria-label="筛选任务状态"><option value="all">全部状态</option><option v-for="(name,key) in statusNames" :key="key" :value="key">{{ name }}</option></select>
+                <span class="table-count">共 {{ filteredTasks.length }} 条记录</span>
+              </div>
+              <div class="table-scroll"><table><thead><tr><th>任务编号</th><th>搬运路线</th><th>数量</th><th>车辆</th><th>状态</th><th>时间</th><th>里程 / 时长</th><th>生成原因</th></tr></thead><tbody>
+                <tr v-for="task in filteredTasks" :key="task.id">
+                  <td><span class="task-id">{{ task.id }}</span></td>
+                  <td><div class="record-route"><strong>{{ regionName(task.sourceId) }}</strong><ArrowRight :size="14"/><strong>{{ regionName(task.destinationId) }}</strong></div></td>
+                  <td>{{ task.quantity }} 辆</td>
+                  <td>0{{ task.vehicle }}</td>
+                  <td><span :class="['task-status', task.status.toLowerCase()]">{{ statusNames[task.status] }}</span></td>
+                  <td><div class="record-time"><span>创建 {{ time(task.createdMinute) }}</span><span v-if="task.startedMinute != null">开始 {{ time(task.startedMinute) }}</span><span v-if="task.completedMinute != null">完成 {{ time(task.completedMinute) }}</span></div></td>
+                  <td>{{ task.distance.toFixed(1) }} km / {{ task.duration }} 分钟</td>
+                  <td class="record-reason">{{ task.reason || '旧记录未保存原因' }}</td>
+                </tr>
+                <tr v-if="!filteredTasks.length"><td colspan="8" class="empty-table">没有符合条件的任务记录。生成调度方案并推进时间后，这里会出现完整轨迹。</td></tr>
+              </tbody></table></div>
+              <div class="table-footer"><Info :size="16"/>记录由后端持久化；时间随工作台 +5 分钟推进，重置场景会清除全部任务。</div>
+            </article>
           </template>
 
           <template v-if="current === 'experiments'">
-            <div class="notice"><FlaskConical :size="18"/><span>独立回放，不改变工作台库存。三种策略使用相同初始库存、请求序列及 2 辆运输车。</span></div><article class="panel experiment-config"><div class="experiment-config-title"><div class="section-icon"><FlaskConical :size="24"/></div><div><h2>策略对比实验</h2><p>3 小时 · 1,260 次模拟借车请求 · 单次确定性回放</p></div></div><label>随机种子<input type="number" v-model.number="seed" min="0" max="999999" aria-label="随机种子"/></label><button class="btn primary" :disabled="experimenting || activeTasks.length > 0" @click="runExperiment"><Play :size="16"/>{{ experimenting ? '正在运行…' : '运行对比实验' }}</button></article><p v-if="activeTasks.length" class="inline-warning">请先完成或取消调度任务，确保实验从完整的地面库存开始。</p>
-            <div v-if="!experiment" class="panel experiment-placeholder"><div class="experiment-placeholder-icon"><ChartNoAxesCombined :size="42"/></div><h2>让数据回答，哪种策略更合适</h2><p>对比借车成功率、缺车时长与搬运成本。结果由仿真计算，不预设提升幅度。</p><div class="strategy-chips"><span>01 不调度</span><span>02 阈值就近调度</span><span>03 预测优先调度</span></div></div>
-            <template v-else><div class="experiment-results"><article v-for="(result,i) in experiment.results" :key="result.strategy" :class="['panel result-card', { featured:i===2 }]"><span class="result-index">POLICY 0{{ i+1 }}</span><h2>{{ strategyNames[result.strategy] }}</h2><div class="result-rate">{{ result.serviceRate.toFixed(1) }}<small>%</small></div><p>借车成功率</p><div class="result-bar"><div :style="{ width:result.serviceRate+'%' }"></div></div><div class="summary-row"><span>成功借车</span><strong>{{ result.served }} / {{ result.requested }}</strong></div><div class="summary-row"><span>区域缺车总时长</span><strong>{{ result.shortageMinutes }} 分钟</strong></div><div class="summary-row"><span>搬运里程</span><strong>{{ result.distance }} km</strong></div><div class="summary-row"><span>搬运单车</span><strong>{{ result.moved }} 辆</strong></div></article></div><article class="panel experiment-report"><div><h2><CheckCircle2 :size="19"/>实验完成 · 车辆守恒检查通过</h2><p>种子 {{ experiment.seed }} · {{ scenarioNames[experiment.scenario] }} · {{ experiment.durationMinutes }} 分钟</p></div><button class="btn" @click="downloadCsv"><Download :size="16"/>导出 CSV</button></article><p class="experiment-caveat">{{ experiment.model }}。单次结果仅用于演示；论文需增加多种子实验与实测数据验证。统计包含运行结束时仍在途的车辆。</p></template>
+            <div class="notice"><FlaskConical :size="18"/><span>独立回放，不改变工作台库存。三种策略使用相同初始库存、请求序列及 2 辆运输车。</span></div><article class="panel experiment-config"><div class="experiment-config-title"><div class="section-icon"><FlaskConical :size="24"/></div><div><h2>策略对比实验</h2><p>3 小时 · 1,260 次模拟借车请求 · 可重复多种子回放</p></div></div><label>随机种子<input type="number" v-model.number="seed" min="0" max="999999" aria-label="随机种子"/></label><label>重复次数<select v-model.number="runs" aria-label="重复次数" :disabled="experimenting"><option v-for="n in [1,3,5,10]" :key="n" :value="n">{{ n }} 次</option></select></label><button class="btn primary" :disabled="experimenting || activeTasks.length > 0" @click="runExperiment"><Play :size="16"/>{{ experimenting ? '正在运行…' : '运行对比实验' }}</button></article><p v-if="activeTasks.length" class="inline-warning">请先完成或取消调度任务，确保实验从完整的地面库存开始。</p>
+            <div v-if="!summary" class="panel experiment-placeholder"><div class="experiment-placeholder-icon"><ChartNoAxesCombined :size="42"/></div><h2>让数据回答，哪种策略更合适</h2><p>对比借车成功率、缺车时长与搬运成本。多种子重复运行，同时给出均值与波动范围。</p><div class="strategy-chips"><span>01 不调度</span><span>02 阈值就近调度</span><span>03 预测优先调度</span></div></div>
+            <template v-else>
+              <div class="experiment-meta"><span>种子 {{ summary.runCount > 1 ? `${summary.baseSeed}–${summary.baseSeed + summary.runCount - 1}` : summary.baseSeed }}</span><span>{{ scenarioNames[summary.scenario] }}</span><span>{{ summary.durationMinutes }} 分钟 · {{ summary.runCount }} 次独立回放</span></div>
+              <div class="experiment-results"><article v-for="(result,i) in summary.results" :key="result.strategy" :class="['panel result-card', { featured:i===2 }]"><span class="result-index">POLICY 0{{ i+1 }}</span><h2>{{ strategyNames[result.strategy] }}</h2><div class="result-rate">{{ result.serviceRateAvg.toFixed(1) }}<small>%</small></div><p>{{ summary.runCount > 1 ? '平均借车成功率' : '借车成功率' }}</p><div class="result-bar"><div :style="{ width:result.serviceRateAvg+'%' }"></div></div><div v-if="summary.runCount > 1" class="result-range">范围 {{ result.serviceRateMin.toFixed(1) }}–{{ result.serviceRateMax.toFixed(1) }}%</div><div class="summary-row"><span>{{ summary.runCount > 1 ? '平均缺车总时长' : '区域缺车总时长' }}</span><strong>{{ result.shortageMinutesAvg }} 分钟</strong></div><div class="summary-row"><span>{{ summary.runCount > 1 ? '平均搬运里程' : '搬运里程' }}</span><strong>{{ result.distanceAvg }} km</strong></div><div class="summary-row"><span>{{ summary.runCount > 1 ? '平均搬运单车' : '搬运单车' }}</span><strong>{{ result.movedAvg }} 辆</strong></div></article></div>
+              <article class="panel table-panel seed-table"><div class="panel-heading"><h2>逐种子成功率</h2><span>同一种子下三种策略共享请求序列</span></div><div class="table-scroll"><table><thead><tr><th>种子</th><th>请求数</th><th>不调度</th><th>阈值就近</th><th>预测优先</th></tr></thead><tbody><tr v-for="run in summary.runs" :key="run.seed"><td>{{ run.seed }}</td><td>{{ run.results[0].requested }}</td><td>{{ run.results[0].serviceRate.toFixed(1) }}%</td><td>{{ run.results[1].serviceRate.toFixed(1) }}%</td><td>{{ run.results[2].serviceRate.toFixed(1) }}%</td></tr></tbody></table></div></article>
+              <article class="panel experiment-report"><div><h2><CheckCircle2 :size="19"/>实验完成 · 车辆守恒检查通过</h2><p>种子 {{ summary.baseSeed }}{{ summary.runCount > 1 ? ' 起连续 ' + summary.runCount + ' 个' : '' }} · {{ scenarioNames[summary.scenario] }} · {{ summary.durationMinutes }} 分钟</p></div><button class="btn" @click="downloadCsv"><Download :size="16"/>导出 CSV</button></article>
+              <p class="experiment-caveat">{{ summary.model }}。结果由仿真计算，不预设提升幅度；统计包含运行结束时仍在途的车辆。</p>
+            </template>
           </template>
           <footer class="page-footer"><span>交点 CycleFlow <span class="footer-dot">·</span> 让校园周边出行更有序</span><span>真实地区背景 / 模拟运营数据</span></footer>
         </template>
@@ -151,6 +230,6 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
     <div v-if="toast" class="toast" role="status"><Info :size="18"/><span>{{ toast }}</span><button aria-label="关闭提示" @click="toast = ''"><X :size="16"/></button></div>
     <dialog ref="editDialog" class="modal"><form @submit.prevent="saveEdit"><div class="modal-heading"><div><span class="eyebrow">REGION SETTINGS</span><h2>编辑停车区域</h2></div><button type="button" class="icon-button" aria-label="关闭编辑" @click="editDialog.close()"><X :size="21"/></button></div><label>区域名称<input v-model="edit.name" required maxlength="40"/></label><div class="form-row"><label>停车容量（辆）<input v-model.number="edit.capacity" type="number" required min="1" max="500"/></label><label>安全库存（辆）<input v-model.number="edit.safetyStock" type="number" required min="0" :max="edit.capacity"/></label></div><p class="muted">容量需容纳现有车辆和已安排的调入车辆。保存后自动更新供需判断。</p><p v-if="formError" class="form-error" role="alert">{{ formError }}</p><div class="modal-actions"><button type="button" class="btn" @click="editDialog.close()">取消</button><button class="btn primary" type="submit" :disabled="busy">保存区域</button></div></form></dialog>
     <dialog ref="resetDialog" class="modal"><div class="modal-heading"><h2>重置演示场景</h2><button class="icon-button" aria-label="关闭重置窗口" @click="resetDialog.close()"><X :size="21"/></button></div><p>将切换为「{{ scenarioNames[pendingScenario] }}」，恢复 12 个初始区域与 500 辆单车，清除本地调度任务和区域修改。</p><div class="modal-actions"><button class="btn" @click="resetDialog.close()">保留当前状态</button><button class="btn primary" :disabled="busy" @click="reset">确认重置</button></div></dialog>
-    <dialog ref="infoDialog" class="modal info-modal"><div class="modal-heading"><h2>关于这一版</h2><button class="icon-button" aria-label="关闭数据说明" @click="infoDialog.close()"><X :size="21"/></button></div><span class="green-pill">毕业设计原型 · V0.1</span><h3>研究地区</h3><p>以西南交通大学犀浦校区周边为背景。校门、轨道接驳和社区区域用于设计演示场景；真实街道底图来自 OpenStreetMap；示范停车点位与容量未实测，调度连线不代表道路导航。</p><h3>数据与算法</h3><p>12 个区域、500 辆单车、2 辆载量为 20 的运输车。预测采用场景规则，调度采用“缺口优先＋就近匹配”；尚未接入运营商、道路路线服务或训练模型。</p><h3>两种演示方式</h3><p>工作台播放搬运任务，时间前进时更新到达库存；仿真实验另外回放借还请求，只有成功借车才生成还车事件。距离为网格估算，运输车假定在取车点就近待命。</p><h3>本地保存</h3><p>Spring Boot 后端将区域设置和任务保存在 H2 文件数据库中，刷新页面不会丢失；重置场景会恢复初始数据。</p><div class="modal-actions"><button class="btn primary" @click="infoDialog.close()">了解了</button></div></dialog>
+    <dialog ref="infoDialog" class="modal info-modal"><div class="modal-heading"><h2>关于这一版</h2><button class="icon-button" aria-label="关闭数据说明" @click="infoDialog.close()"><X :size="21"/></button></div><span class="green-pill">毕业设计原型 · V0.1</span><h3>研究地区</h3><p>以西南交通大学犀浦校区周边为背景。校门、轨道接驳和社区区域用于设计演示场景；真实街道底图来自 OpenStreetMap；示范停车点位与容量未实测，调度连线不代表道路导航。</p><h3>数据与算法</h3><p>12 个区域、500 辆单车、2 辆载量为 20 的运输车。预测采用场景规则，调度采用“缺口优先＋就近匹配”；每项任务保存生成原因；仿真实验可用多个连续种子重复运行，报告均值与范围。尚未接入运营商、道路路线服务或训练模型。</p><h3>两种演示方式</h3><p>工作台播放搬运任务，时间前进时更新到达库存；仿真实验另外回放借还请求，只有成功借车才生成还车事件。距离为网格估算，运输车假定在取车点就近待命。</p><h3>本地保存</h3><p>Spring Boot 后端将区域设置和任务保存在 H2 文件数据库中，刷新页面不会丢失；重置场景会恢复初始数据。</p><div class="modal-actions"><button class="btn primary" @click="infoDialog.close()">了解了</button></div></dialog>
   </div>
 </template>

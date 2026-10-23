@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS dispatch_tasks (
  id VARCHAR(60) PRIMARY KEY, source_id INT NOT NULL, destination_id INT NOT NULL,
  quantity INT NOT NULL, vehicle INT NOT NULL, status VARCHAR(20) NOT NULL,
  distance DOUBLE NOT NULL, duration INT NOT NULL, created_minute INT NOT NULL,
- started_minute INT, completed_minute INT,
+ started_minute INT, completed_minute INT, reason VARCHAR(300),
  FOREIGN KEY(source_id) REFERENCES regions(id), FOREIGN KEY(destination_id) REFERENCES regions(id)
 );
+ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS reason VARCHAR(300);

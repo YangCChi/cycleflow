@@ -61,3 +61,34 @@
 @media(max-width:700px){.table-panel:not(.forecast-table) tbody{grid-template-columns:minmax(0,1fr)}.region-inspector{display:flex}.region-inspector-actions{flex-direction:row;padding-top:22px}.region-inspector-actions .btn{width:auto}.region-inspector-metrics{width:100%}}
 @media(max-width:480px){.region-explorer{gap:13px}.region-explorer-map .panel-heading{min-height:65px}.region-inspector{padding:19px}.region-inspector-stock strong{font-size:35px}.region-inspector-metrics{gap:5px}.region-inspector-actions .btn{font-size:11px}.table-panel:not(.forecast-table) tbody{padding:0 13px 13px}.table-panel:not(.forecast-table) tbody tr{padding:9px 13px}}
 @media(max-width:480px){.demo-map-tooltip:not(.selected-label){display:none}}
+.plan-summary{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--border);border-radius:9px;padding:14px 18px;margin-bottom:15px;box-shadow:0 2px 3px #1e462004}
+.plan-summary-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:8px;background:#e8f5ef;color:var(--green);flex:0 0 auto}
+.plan-summary-copy{min-width:0}
+.plan-summary-copy strong{display:block;font-size:13px;font-weight:600;color:#24473b}
+.plan-summary-copy p{margin:3px 0 0;font-size:11px;color:#82908b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.plan-summary-metrics{display:flex;gap:18px;margin-left:auto;font-size:11px;color:#82908b;white-space:nowrap}
+.plan-summary-metrics b{font-size:15px;color:#24473b;margin-left:4px;font-weight:600}
+.task-reason{margin:10px 0 0;padding:8px 10px;border-left:2px solid #b9d8c9;background:#f7faf7;border-radius:0 4px 4px 0;color:#718879;font-size:11px;line-height:1.55}
+.records-stats{margin-bottom:15px}
+.records-panel .table-scroll table{min-width:1040px;white-space:normal}
+.records-panel thead th{white-space:nowrap}
+.records-panel tbody td{padding-top:14px;padding-bottom:14px;vertical-align:top}
+.task-id{display:inline-block;padding:3px 6px;border-radius:4px;background:#f2f6f2;color:#54705f;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;white-space:nowrap}
+.record-route{display:flex;align-items:center;gap:8px;color:#3d5a4c;font-size:12px;min-width:180px}
+.record-route strong{font-weight:500}
+.record-time{display:flex;flex-direction:column;gap:2px;color:#718879;font-size:11px;white-space:nowrap}
+.record-reason{max-width:270px;color:#7d8f83;font-size:11px;line-height:1.5}
+.experiment-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:15px;font-size:11px;color:#54705f}
+.experiment-meta span{padding:5px 10px;border-radius:999px;background:#eef4ef}
+.result-range{margin-top:6px;color:#7d8f83;font-size:11px;text-align:center}
+.seed-table{margin-top:15px}
+.seed-table .panel-heading{padding-bottom:4px}
+.seed-table td:first-child{color:#54705f;font-variant-numeric:tabular-nums}
+@media(max-width:1050px){.records-panel .table-scroll table{min-width:0}.table-panel.records-panel tbody td:nth-child(2)::before{content:'搬运路线'}.table-panel.records-panel tbody td:nth-child(3)::before{content:'数量'}.table-panel.records-panel tbody td:nth-child(4)::before{content:'车辆'}.table-panel.records-panel tbody td:nth-child(5)::before{content:'状态'}.table-panel.records-panel tbody td:nth-child(6)::before{content:'时间'}.table-panel.records-panel tbody td:nth-child(7)::before{content:'里程 / 时长'}.table-panel.records-panel tbody td:nth-child(8)::before{content:'生成原因'}.table-panel.records-panel tbody td:first-child{font-size:12px;color:#54705f}.record-route{min-width:0}.record-reason{max-width:none;text-align:right}.table-panel.seed-table tbody td:first-child{font-size:12px}.table-panel.seed-table tbody td:nth-child(2)::before{content:'请求数'}.table-panel.seed-table tbody td:nth-child(3)::before{content:'不调度'}.table-panel.seed-table tbody td:nth-child(4)::before{content:'阈值就近'}.table-panel.seed-table tbody td:nth-child(5)::before{content:'预测优先'}}
+@media(max-width:900px){.plan-summary{flex-wrap:wrap}.plan-summary-metrics{width:100%;margin-left:50px}}
+@media(max-width:600px){.plan-summary-metrics{width:100%;margin-left:0;flex-wrap:wrap;gap:12px}}
+.sidebar{overflow-y:auto;overscroll-behavior:contain}
+.amap-marker-shell{position:relative;display:flex;flex-direction:column;align-items:center}
+.amap-marker-name{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:5px;padding:3px 7px;border:1px solid #dae5dd;border-radius:5px;background:#fffffff2;color:#355846;font-size:11px;font-weight:650;white-space:nowrap;box-shadow:0 2px 6px #193c3418}
+.region-map.is-amap .map-legend{bottom:52px}
+.region-map.is-amap .map-disclaimer{left:96px}
