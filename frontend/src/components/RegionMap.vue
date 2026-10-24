@@ -9,8 +9,8 @@ const emit = defineEmits(['select'])
 const container = ref(null)
 const tileError = ref(false)
 const loadNote = ref('')
+const legendOpen = ref(false)
 const mapEngine = ref('')
-const mapProvider = ref('OpenStreetMap')
 const campus = [30.7660599, 103.9844831]
 const amapKey = import.meta.env.VITE_AMAP_KEY
 const amapSecurity = import.meta.env.VITE_AMAP_SECURITY_CODE
@@ -40,8 +40,6 @@ const tileProviders = [
 const position = region => [region.latitude, region.longitude]
 const isMapped = region => Number.isFinite(region?.latitude) && Number.isFinite(region?.longitude)
 const tone = region => region.shortage > 0 ? 'shortage' : region.status === 'crowded' ? 'crowded' : 'balanced'
-const showLabel = region => props.selected === region.id || region.id <= 3
-const escapeHtml = value => String(value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]))
 
 function wgs84ToGcj02(lng, lat) {
   if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) return [lng, lat]
@@ -77,21 +75,16 @@ function drawLeafletMarkers() {
   leafletMarkers.clearLayers()
   for (const region of props.regions.filter(isMapped)) {
     const active = props.selected === region.id
-    const size = active ? 46 : 40
+    const size = active ? 18 : 14
     const icon = L.divIcon({
       className: 'demo-map-marker ' + tone(region) + (active ? ' selected' : ''),
-      html: '<span>' + Number(region.stock) + '</span>',
+      html: '',
       iconSize: [size, size],
       iconAnchor: [size / 2, size / 2]
     })
     const description = region.name + '，' + region.stock + ' 辆；演示停车点，位置未实测'
-    const marker = L.marker(position(region), { icon, title: description, alt: description, keyboard: true })
+    L.marker(position(region), { icon, title: description, alt: description, keyboard: true })
       .on('click', () => emit('select', region.id)).addTo(leafletMarkers)
-    if (showLabel(region)) {
-      const label = document.createElement('span')
-      label.textContent = region.name
-      marker.bindTooltip(label, { permanent: true, direction: 'bottom', offset: [0, 12], className: 'demo-map-tooltip' + (active ? ' selected-label' : '') })
-    }
   }
 }
 
@@ -148,7 +141,6 @@ function initLeaflet() {
   drawLeafletMarkers()
   fitLeafletArea()
   mapEngine.value = 'leaflet'
-  mapProvider.value = 'OpenStreetMap'
   window.setTimeout(() => map?.invalidateSize(), 120)
 }
 
@@ -206,12 +198,11 @@ function drawAmap(fit) {
   amapMarkers = []
   for (const region of props.regions.filter(isMapped)) {
     const active = props.selected === region.id
-    const size = active ? 46 : 40
+    const size = active ? 18 : 14
     const wrapper = document.createElement('div')
     wrapper.className = 'amap-marker-shell'
     wrapper.style.width = size + 'px'
-    wrapper.innerHTML = '<div class="demo-map-marker ' + tone(region) + (active ? ' selected' : '') + '" style="width:' + size + 'px;height:' + size + 'px"><span>' + Number(region.stock) + '</span></div>'
-      + (showLabel(region) ? '<span class="amap-marker-name">' + escapeHtml(region.name) + '</span>' : '')
+    wrapper.innerHTML = '<div class="demo-map-marker ' + tone(region) + (active ? ' selected' : '') + '" style="width:' + size + 'px;height:' + size + 'px"></div>'
     wrapper.tabIndex = 0
     wrapper.setAttribute('role', 'button')
     wrapper.setAttribute('aria-label', region.name + '，现有 ' + region.stock + ' 辆，待补 ' + Math.max(0, region.shortage) + ' 辆')
@@ -245,11 +236,10 @@ function fitAmapArea() {
 function initAmap() {
   const [lng, lat] = wgs84ToGcj02(campus[1], campus[0])
   amap = new window.AMap.Map(container.value, {
-    center: [lng, lat], zoom: 14, viewMode: '2D', mapStyle: 'amap://styles/normal',
+    center: [lng, lat], zoom: 14, viewMode: '2D', mapStyle: 'amap://styles/whitesmoke',
     scrollWheel: false, zoomControl: false, resizeEnable: true
   })
   mapEngine.value = 'amap'
-  mapProvider.value = '高德地图'
   drawAmap(true)
 }
 
@@ -309,11 +299,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="region-map" :class="{ 'is-amap': mapEngine === 'amap' }">
     <div ref="container" class="leaflet-map" aria-label="犀浦校区周边真实街道底图及演示停车点"></div>
-    <div class="map-caption"><span class="live-dot"></span> 犀浦校区周边 <span class="map-tag">{{ mapProvider }}</span></div>
     <div v-if="tileError" class="map-tile-error" role="status">地图底图暂时无法加载，请检查网络后刷新页面。</div>
     <div v-if="loadNote" class="map-tile-error" role="status">{{ loadNote }}</div>
     <div class="map-controls"><button aria-label="放大地图" @click="zoomIn"><Plus :size="17"/></button><button aria-label="缩小地图" @click="zoomOut"><Minus :size="17"/></button><button aria-label="恢复地图视图" @click="fitDemoArea"><LocateFixed :size="17"/></button></div>
-    <div class="map-legend"><span><i class="legend-dot green"></i>库存充足</span><span><i class="legend-dot orange"></i>待补车</span><span><i class="legend-dot blue"></i>较拥挤</span></div>
-    <div class="map-disclaimer">停车点位未实测 · 路线优先高德规划</div>
+    <button class="map-legend-toggle" :aria-expanded="legendOpen" @click="legendOpen = !legendOpen">图例</button>
+    <div v-if="legendOpen" class="map-legend"><span><i class="legend-dot green"></i>库存充足</span><span><i class="legend-dot orange"></i>待补车</span><span><i class="legend-dot blue"></i>较拥挤</span></div>
   </div>
 </template>

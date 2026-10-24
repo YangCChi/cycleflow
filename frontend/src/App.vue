@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { Bike, LayoutDashboard, MapPin, ChartNoAxesCombined, Route, FlaskConical, ArrowUpRight, ArrowRight, ChevronRight, Search, SlidersHorizontal, RefreshCw, Play, Pause, Download, X, Check, Clock3, Truck, CircleAlert, Info, PanelLeftClose, Menu, Activity, Settings2, CheckCircle2, History } from 'lucide-vue-next'
+import { Bike, LayoutDashboard, MapPin, ChartNoAxesCombined, Route, FlaskConical, ArrowUpRight, ArrowRight, ChevronRight, Search, SlidersHorizontal, RefreshCw, Play, Pause, Download, X, Check, Clock3, Truck, CircleAlert, Info, PanelLeftClose, Menu, Activity, Settings2, CheckCircle2, History, ChevronDown } from 'lucide-vue-next'
 import RegionMap from './components/RegionMap.vue'
 
 const tabs = [
@@ -17,6 +17,7 @@ const page = computed(() => tabs.find(t => t.id === current.value))
 const data = ref(null), loading = ref(true), busy = ref(false), error = ref(''), toast = ref(''), selected = ref(1), search = ref(''), filter = ref('all'), mobileNav = ref(false)
 const forecasting = ref(false), forecast = ref([]), summary = ref(null), seed = ref(42), runs = ref(5), experimenting = ref(false), playing = ref(false), matrixRefreshing = ref(false)
 const taskFilter = ref('all'), taskSearch = ref(''), showAllAlerts = ref(false)
+const mapDetail = ref(false), priorityOpen = ref(false)
 const editDialog = ref(null), resetDialog = ref(null), infoDialog = ref(null), demoDialog = ref(null), edit = ref({}), pendingScenario = ref('morning'), formError = ref('')
 const scenarioNames = { morning: '工作日早高峰', evening: '工作日晚高峰', weekend: '周末出行' }
 const typeNames = { gate: '校门接驳', metro: '轨道接驳', residential: '居住区域', commercial: '商业区域' }
@@ -46,6 +47,7 @@ const filteredTasks = computed(() => {
 })
 const time = minute => `${String(Math.floor(minute / 60) % 24).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
 const regionName = id => regions.value.find(r => r.id === id)?.name || '未知区域'
+function pickRegion(id) { selected.value = id; mapDetail.value = true }
 let interval, toastTimer, forecastRequest = 0
 
 async function api(path, method = 'GET', body) {
@@ -168,15 +170,41 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
 
           <template v-if="current === 'overview'">
             <div class="status-strip">
-              <div class="status-metric"><span>区域单车总量</span><strong>{{ data.totalBikes }}</strong><small>辆</small></div>
-              <div class="status-metric"><span>待补车区域</span><strong>{{ alerts.length }}</strong><small>个</small></div>
-              <div class="status-metric"><span>预计缺口</span><strong>{{ shortage }}</strong><small>辆</small></div>
-              <div class="status-metric"><span>进行中</span><strong>{{ activeTasks.length }}</strong><small>项</small></div>
+              <p class="status-summary"><strong>{{ alerts.length }}</strong> 个区域待补 <strong>{{ shortage }}</strong> 辆<span v-if="activeTasks.length" class="status-extra"> · 进行中 {{ activeTasks.length }} 项</span></p>
               <div class="status-actions"><span class="status-clock"><Clock3 :size="14"/>{{ time(data.minute) }}</span><button class="text-button" @click="demoDialog.showModal()"><Settings2 :size="16"/>演示控制</button></div>
             </div>
             <section class="overview-grid">
-              <article class="panel map-panel"><div class="panel-heading"><div><h2>区域供需分布</h2><span>{{ regions.length }} 个示范停车区域</span></div><button class="text-button" @click="navigate('regions')">区域管理<ArrowUpRight :size="16"/></button></div><RegionMap :regions="regions" :selected="selected" :tasks="tasks" @select="selected = $event"/><div class="map-detail" v-if="selectedRegion"><div class="detail-pin"><MapPin :size="21"/></div><div><strong>{{ selectedRegion.name }}</strong><span>{{ typeNames[selectedRegion.kind] }} · 容量 {{ selectedRegion.capacity }} 辆</span></div><div class="map-detail-metric"><strong>{{ selectedRegion.stock }}<small> / {{ selectedRegion.target }}</small></strong><span>现有 / 目标库存</span></div><button class="icon-button" aria-label="查看所选区域预测" @click="navigate('forecast')"><ChevronRight :size="21"/></button></div></article>
-              <aside class="panel alert-panel"><div class="panel-heading"><h2>补车优先级<span class="count-badge">{{ alerts.length }}</span></h2><span class="tiny-label">30 MIN</span></div><p class="panel-description">结合预期借还量与安全库存排序</p><div class="alert-list"><button v-for="(r,i) in visibleAlerts" :key="r.id" :class="['alert-item', { selected: selected === r.id }]" @click="selected = r.id"><div class="alert-item-top"><span class="rank">{{ String(i+1).padStart(2,'0') }}</span><strong>{{ r.name }}</strong><ChevronRight :size="15"/></div><div class="alert-item-body"><span>现有 <b>{{ r.stock }}</b> 辆</span><span class="shortage-label">待补 {{ r.shortage }} 辆</span></div><div class="stock-track"><div :style="{ width: Math.min(100,r.stock/r.target*100)+'%' }"></div></div></button><div v-if="!alerts.length" class="empty-mini"><CheckCircle2 :size="32"/><strong>补车需求已覆盖</strong><p>现有库存与在途任务已覆盖当前目标。</p></div></div><button v-if="alerts.length > 3" class="text-button alert-more" @click="showAllAlerts = !showAllAlerts">{{ showAllAlerts ? '收起' : '查看全部 ' + alerts.length + ' 个' }}<ChevronRight :size="15"/></button><button class="btn full-width" @click="navigate('dispatch')">进入调度中心<ChevronRight :size="16"/></button></aside>
+              <article class="panel map-panel">
+                <div class="panel-heading"><div><h2>区域分布</h2><span>12 个区域 · 点击圆点查看</span></div><button class="text-button" @click="navigate('regions')">区域管理<ArrowUpRight :size="15"/></button></div>
+                <div class="map-stage">
+                  <RegionMap :regions="regions" :tasks="tasks" :selected="mapDetail ? selected : null" @select="pickRegion"/>
+                  <transition name="fade">
+                    <div v-if="mapDetail && selectedRegion" class="map-detail-card">
+                      <button class="map-detail-close" aria-label="关闭区域详情" @click="mapDetail = false"><X :size="15"/></button>
+                      <span class="eyebrow">{{ typeNames[selectedRegion.kind] }}</span>
+                      <h3>{{ selectedRegion.name }}</h3>
+                      <div class="map-detail-numbers"><strong>{{ selectedRegion.stock }}</strong><span>/ 目标 {{ selectedRegion.target }} 辆</span></div>
+                      <p>容量 {{ selectedRegion.capacity }} 辆<span v-if="selectedRegion.shortage"> · 待补 {{ selectedRegion.shortage }} 辆</span></p>
+                    </div>
+                  </transition>
+                </div>
+              </article>
+              <aside class="panel priority-panel">
+                <button class="priority-head" :aria-expanded="priorityOpen" @click="priorityOpen = !priorityOpen">
+                  <div><h2>补车优先级</h2><span class="priority-sub">{{ alerts.length }} 个区域 · 待补 {{ shortage }} 辆</span></div>
+                  <ChevronDown :size="18" :class="['chev', { open: priorityOpen }]"/>
+                </button>
+                <div v-if="priorityOpen" class="priority-list">
+                  <button v-for="(r,i) in alerts" :key="r.id" class="priority-row" @click="pickRegion(r.id)">
+                    <span class="priority-rank">{{ String(i+1).padStart(2,'0') }}</span>
+                    <span class="priority-name">{{ r.name }}</span>
+                    <span class="priority-shortage">待补 {{ r.shortage }}</span>
+                    <ChevronRight :size="15"/>
+                  </button>
+                  <p v-if="!alerts.length" class="priority-empty">当前没有待补区域</p>
+                </div>
+                <button class="text-button priority-more" @click="navigate('dispatch')">进入调度中心 <ChevronRight :size="15"/></button>
+              </aside>
             </section>
           </template>
 
@@ -185,7 +213,9 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
               <article class="panel region-explorer-map"><div class="panel-heading"><div><h2>地图选点</h2><span>点击圆点查看区域库存与补车建议</span></div><span class="tiny-label">{{ regions.length }} POINTS</span></div><RegionMap :regions="regions" :selected="selected" :tasks="tasks" @select="selected = $event"/></article>
               <article v-if="selectedRegion" class="panel region-inspector"><div class="region-inspector-top"><span class="eyebrow">SELECTED REGION · {{ String(selectedRegion.id).padStart(2,'0') }}</span><span :class="['status-pill', selectedRegion.shortage ? 'orange-pill' : 'green-pill']">{{ selectedRegion.shortage ? '待补 ' + selectedRegion.shortage + ' 辆' : '库存充足' }}</span></div><h2>{{ selectedRegion.name }}</h2><p>{{ typeNames[selectedRegion.kind] }} · 示范停车区域</p><div class="region-inspector-stock"><strong>{{ selectedRegion.stock }}<small> / {{ selectedRegion.capacity }}</small></strong><span>当前库存 / 停车容量</span></div><div class="stock-track"><div :style="{ width: Math.min(100, selectedRegion.stock / selectedRegion.capacity * 100) + '%' }"></div></div><div class="region-inspector-metrics"><div><span>30 分钟目标</span><strong>{{ selectedRegion.target }} 辆</strong></div><div><span>安全库存</span><strong>{{ selectedRegion.safetyStock }} 辆</strong></div><div><span>已安排调入</span><strong>{{ selectedRegion.reservedIn }} 辆</strong></div></div><div class="region-inspector-actions"><button class="btn" @click="openEdit(selectedRegion)"><Settings2 :size="16"/>编辑区域</button><button class="btn primary" @click="navigate('forecast')">查看预测<ArrowRight :size="16"/></button></div></article>
             </section>
-            <article class="panel table-panel"><div class="table-toolbar"><div class="search-field"><Search :size="18"/><input v-model="search" placeholder="搜索停车区域" aria-label="搜索停车区域"/></div><select v-model="filter" aria-label="筛选停车区域"><option value="all">全部区域</option><option value="shortage">待补车区域</option><option v-for="(name,key) in typeNames" :value="key" :key="key">{{ name }}</option></select><span class="table-count">共 {{ filteredRegions.length }} 个区域</span></div><div class="table-scroll"><table><thead><tr><th>停车区域</th><th>区域类型</th><th>当前库存 / 容量</th><th>安全库存</th><th>目标库存</th><th>供需状态</th><th>操作</th></tr></thead><tbody><tr v-for="r in filteredRegions" :key="r.id"><td><span class="region-number">{{ String(r.id).padStart(2,'0') }}</span><strong>{{ r.name }}</strong></td><td>{{ typeNames[r.kind] }}</td><td><div class="table-stock"><span>{{ r.stock }}<small> / {{ r.capacity }}</small></span><div class="stock-track"><div :style="{ width:r.stock/r.capacity*100+'%', background:r.shortage?'#e7a14c':'#14a583' }"></div></div></div></td><td>{{ r.safetyStock }} 辆</td><td>{{ r.target }} 辆</td><td><span :class="['status-pill', r.shortage ? 'orange-pill' : 'green-pill']">{{ r.shortage ? '待补 ' + r.shortage + ' 辆' : r.reservedIn ? '补车已安排' : '库存充足' }}</span></td><td><button class="text-button" @click="openEdit(r)">编辑</button></td></tr><tr v-if="!filteredRegions.length"><td colspan="7" class="empty-table">没有找到匹配的停车区域</td></tr></tbody></table></div><div class="table-footer"><Info :size="16"/>区域为示范点位；编辑容量与安全库存后，补车建议会重新计算。</div></article>
+            <details class="panel table-panel">
+              <summary class="table-summary"><span>区域清单</span><span class="table-summary-meta">{{ filteredRegions.length }} 个区域 · {{ alerts.length }} 个待补</span><ChevronDown :size="18" class="chev"/></summary>
+<div class="table-toolbar"><div class="search-field"><Search :size="18"/><input v-model="search" placeholder="搜索停车区域" aria-label="搜索停车区域"/></div><select v-model="filter" aria-label="筛选停车区域"><option value="all">全部区域</option><option value="shortage">待补车区域</option><option v-for="(name,key) in typeNames" :value="key" :key="key">{{ name }}</option></select><span class="table-count">共 {{ filteredRegions.length }} 个区域</span></div><div class="table-scroll"><table><thead><tr><th>停车区域</th><th>区域类型</th><th>当前库存 / 容量</th><th>安全库存</th><th>目标库存</th><th>供需状态</th><th>操作</th></tr></thead><tbody><tr v-for="r in filteredRegions" :key="r.id"><td><span class="region-number">{{ String(r.id).padStart(2,'0') }}</span><strong>{{ r.name }}</strong></td><td>{{ typeNames[r.kind] }}</td><td><div class="table-stock"><span>{{ r.stock }}<small> / {{ r.capacity }}</small></span><div class="stock-track"><div :style="{ width:r.stock/r.capacity*100+'%', background:r.shortage?'#e7a14c':'#14a583' }"></div></div></div></td><td>{{ r.safetyStock }} 辆</td><td>{{ r.target }} 辆</td><td><span :class="['status-pill', r.shortage ? 'orange-pill' : 'green-pill']">{{ r.shortage ? '待补 ' + r.shortage + ' 辆' : r.reservedIn ? '补车已安排' : '库存充足' }}</span></td><td><button class="text-button" @click="openEdit(r)">编辑</button></td></tr><tr v-if="!filteredRegions.length"><td colspan="7" class="empty-table">没有找到匹配的停车区域</td></tr></tbody></table></div><div class="table-footer"><Info :size="16"/>区域为示范点位；编辑容量与安全库存后，补车建议会重新计算。</div></details>
           </template>
 
           <template v-if="current === 'forecast'">
