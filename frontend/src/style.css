@@ -430,3 +430,11 @@ tbody tr:hover{background:#fafafa}
 .experiment-config{flex-wrap:wrap}
 .experiment-settings-body{flex:0 0 100%;align-items:center}
 .task-waiting{margin-top:12px;text-align:right;font-size:12px;color:var(--text-3)}
+
+/* svg map pins and trucks */
+.station-marker{filter:drop-shadow(0 3px 6px rgba(0,0,0,.18));transition:transform .15s ease;transform-origin:50% 100%;line-height:0}
+.station-marker svg{display:block}
+.station-marker.selected{transform:translateY(-2px) scale(1.1);filter:drop-shadow(0 6px 12px rgba(0,0,0,.24))}
+.truck-marker{line-height:0;filter:drop-shadow(0 4px 10px rgba(0,0,0,.28));transition:transform .4s linear}
+.amap-marker-shell{line-height:0}
+.legend-truck{display:inline-block;width:10px;height:10px;border-radius:50%;background:#0a7c5a;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.08)}

@@ -4,7 +4,7 @@ import { Plus, Minus, LocateFixed } from 'lucide-vue-next'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
-const props = defineProps({ regions: { type: Array, default: () => [] }, selected: Number, tasks: { type: Array, default: () => [] } })
+const props = defineProps({ regions: { type: Array, default: () => [] }, selected: Number, tasks: { type: Array, default: () => [] }, minute: { type: Number, default: 0 } })
 const emit = defineEmits(['select'])
 const container = ref(null)
 const tileError = ref(false)
@@ -19,6 +19,8 @@ let map
 let amap
 let leafletMarkers
 let leafletRoutes
+let leafletTrucks
+let amapTrucks = []
 let amapMarkers = []
 let amapRoutes = []
 let tileLayer
@@ -40,6 +42,48 @@ const tileProviders = [
 const position = region => [region.latitude, region.longitude]
 const isMapped = region => Number.isFinite(region?.latitude) && Number.isFinite(region?.longitude)
 const tone = region => region.shortage > 0 ? 'shortage' : region.status === 'crowded' ? 'crowded' : 'balanced'
+const toneColor = region => tone(region) === 'shortage' ? '#d9822b' : tone(region) === 'crowded' ? '#7f8fa6' : '#2f9e6b'
+const progressOf = task => Math.max(0, Math.min(1, (props.minute - (task.startedMinute ?? props.minute)) / Math.max(1, task.duration)))
+const asPair = point => Array.isArray(point) ? point : [point.getLng ? point.getLng() : point.lng, point.getLat ? point.getLat() : point.lat]
+
+function along(points, ratio) {
+  if (points.length === 1) return points[0]
+  const lengths = []
+  let total = 0
+  for (let i = 1; i < points.length; i++) {
+    const length = Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1])
+    lengths.push(length); total += length
+  }
+  let target = total * ratio
+  for (let i = 0; i < lengths.length; i++) {
+    if (target <= lengths[i] || i === lengths.length - 1) {
+      const r = lengths[i] ? Math.min(1, target / lengths[i]) : 0
+      return [points[i][0] + (points[i + 1][0] - points[i][0]) * r, points[i][1] + (points[i + 1][1] - points[i][1]) * r]
+    }
+    target -= lengths[i]
+  }
+  return points[points.length - 1]
+}
+
+function stationSvg(region, active) {
+  const color = toneColor(region)
+  return '<svg class="station-svg" width="34" height="42" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg">'
+    + '<path d="M17 41S32 26.8 32 15.6A15 15 0 1 0 2 15.6C2 26.8 17 41 17 41Z" fill="' + color + '" stroke="#fff" stroke-width="2.5"/>'
+    + '<circle cx="17" cy="16" r="9.4" fill="#fff"/>'
+    + '<g fill="none" stroke="' + color + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+    + '<circle cx="12.4" cy="18.8" r="2.9"/><circle cx="21.6" cy="18.8" r="2.9"/>'
+    + '<path d="M12.4 18.8l3.4-5.2h3l2.8 5.2M15.8 18.8l2.3-5.2M14.4 13.6h2.8"/></g></svg>'
+    + (active ? '' : '')
+}
+
+function truckSvg() {
+  return '<svg width="38" height="38" viewBox="0 0 38 38" xmlns="http://www.w3.org/2000/svg">'
+    + '<circle cx="19" cy="19" r="16.5" fill="#0a7c5a" stroke="#fff" stroke-width="2.6"/>'
+    + '<g fill="none" stroke="#fff" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">'
+    + '<rect x="9" y="14" width="12" height="8.5" rx="1"/>'
+    + '<path d="M21 17.5h3.3L27 20.8v1.7h-6"/>'
+    + '<circle cx="12.8" cy="24" r="1.9" fill="#fff"/><circle cx="23" cy="24" r="1.9" fill="#fff"/></g></svg>'
+}
 
 function wgs84ToGcj02(lng, lat) {
   if (lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271) return [lng, lat]
@@ -75,16 +119,30 @@ function drawLeafletMarkers() {
   leafletMarkers.clearLayers()
   for (const region of props.regions.filter(isMapped)) {
     const active = props.selected === region.id
-    const size = active ? 18 : 14
     const icon = L.divIcon({
-      className: 'demo-map-marker ' + tone(region) + (active ? ' selected' : ''),
-      html: '',
-      iconSize: [size, size],
-      iconAnchor: [size / 2, size / 2]
+      className: 'station-marker ' + tone(region) + (active ? ' selected' : ''),
+      html: stationSvg(region, active),
+      iconSize: [34, 42],
+      iconAnchor: [17, 41]
     })
     const description = region.name + '，' + region.stock + ' 辆；演示停车点，位置未实测'
     L.marker(position(region), { icon, title: description, alt: description, keyboard: true })
       .on('click', () => emit('select', region.id)).addTo(leafletMarkers)
+  }
+}
+
+function drawLeafletTrucks() {
+  if (!map) return
+  leafletTrucks.clearLayers()
+  for (const task of props.tasks.filter(item => item.status === 'RUNNING')) {
+    const source = props.regions.find(region => region.id === task.sourceId)
+    const destination = props.regions.find(region => region.id === task.destinationId)
+    if (!isMapped(source) || !isMapped(destination)) continue
+    const point = along([position(source), position(destination)], progressOf(task))
+    L.marker(point, {
+      icon: L.divIcon({ className: 'truck-marker', html: truckSvg(), iconSize: [38, 38], iconAnchor: [19, 19] }),
+      interactive: false, keyboard: false, zIndexOffset: 500
+    }).addTo(leafletTrucks)
   }
 }
 
@@ -137,8 +195,10 @@ function initLeaflet() {
   addTileLayer(0)
   leafletRoutes = L.layerGroup().addTo(map)
   leafletMarkers = L.layerGroup().addTo(map)
+  leafletTrucks = L.layerGroup().addTo(map)
   drawLeafletRoutes()
   drawLeafletMarkers()
+  drawLeafletTrucks()
   fitLeafletArea()
   mapEngine.value = 'leaflet'
   window.setTimeout(() => map?.invalidateSize(), 120)
@@ -167,7 +227,7 @@ function planAmapRoute(task, source, destination) {
       return
     }
     routePaths.set(task.id, path)
-    if (amap) drawAmapRoutes()
+    if (amap) { drawAmapRoutes(); drawAmapTrucks() }
   })
 }
 
@@ -192,17 +252,41 @@ function drawAmapRoutes() {
   if (amapRoutes.length) amap.add(amapRoutes)
 }
 
+function drawAmapTrucks() {
+  if (!amap) return
+  if (amapTrucks.length) amap.remove(amapTrucks)
+  amapTrucks = []
+  for (const task of props.tasks.filter(item => item.status === 'RUNNING')) {
+    const source = props.regions.find(region => region.id === task.sourceId)
+    const destination = props.regions.find(region => region.id === task.destinationId)
+    if (!isMapped(source) || !isMapped(destination)) continue
+    const cached = routePaths.get(task.id)
+    const points = cached && cached.length
+      ? cached.map(asPair)
+      : [gcjPosition(source), gcjPosition(destination)]
+    const element = document.createElement('div')
+    element.className = 'truck-marker'
+    element.innerHTML = truckSvg()
+    amapTrucks.push(new window.AMap.Marker({
+      position: along(points, progressOf(task)),
+      content: element,
+      offset: new window.AMap.Pixel(-19, -19),
+      zIndex: 140,
+      bubble: true
+    }))
+  }
+  if (amapTrucks.length) amap.add(amapTrucks)
+}
+
 function drawAmap(fit) {
   if (!amap) return
   if (amapMarkers.length) amap.remove(amapMarkers)
   amapMarkers = []
   for (const region of props.regions.filter(isMapped)) {
     const active = props.selected === region.id
-    const size = active ? 18 : 14
     const wrapper = document.createElement('div')
-    wrapper.className = 'amap-marker-shell'
-    wrapper.style.width = size + 'px'
-    wrapper.innerHTML = '<div class="demo-map-marker ' + tone(region) + (active ? ' selected' : '') + '" style="width:' + size + 'px;height:' + size + 'px"></div>'
+    wrapper.className = 'station-marker ' + tone(region) + (active ? ' selected' : '')
+    wrapper.innerHTML = stationSvg(region, active)
     wrapper.tabIndex = 0
     wrapper.setAttribute('role', 'button')
     wrapper.setAttribute('aria-label', region.name + '，现有 ' + region.stock + ' 辆，待补 ' + Math.max(0, region.shortage) + ' 辆')
@@ -212,7 +296,7 @@ function drawAmap(fit) {
     const marker = new window.AMap.Marker({
       position: gcjPosition(region),
       content: wrapper,
-      offset: new window.AMap.Pixel(-size / 2, -size / 2),
+      offset: new window.AMap.Pixel(-17, -41),
       title: region.name + '，' + region.stock + ' 辆；演示停车点，位置未实测',
       zIndex: active ? 120 : 100
     })
@@ -221,6 +305,7 @@ function drawAmap(fit) {
   }
   if (amapMarkers.length) amap.add(amapMarkers)
   drawAmapRoutes()
+  drawAmapTrucks()
   if (fit) fitAmapArea()
 }
 
@@ -276,9 +361,13 @@ watch(() => props.regions, () => {
   else if (map) { drawLeafletMarkers(); drawLeafletRoutes() }
 }, { deep: true })
 watch(() => props.tasks, () => {
-  if (mapEngine.value === 'amap') drawAmapRoutes()
-  else drawLeafletRoutes()
+  if (mapEngine.value === 'amap') { drawAmapRoutes(); drawAmapTrucks() }
+  else { drawLeafletRoutes(); drawLeafletTrucks() }
 }, { deep: true })
+watch(() => props.minute, () => {
+  if (mapEngine.value === 'amap') drawAmapTrucks()
+  else drawLeafletTrucks()
+})
 watch(() => props.selected, id => {
   const region = props.regions.find(item => item.id === id)
   if (mapEngine.value === 'amap') {
@@ -303,6 +392,6 @@ onBeforeUnmount(() => {
     <div v-if="loadNote" class="map-tile-error" role="status">{{ loadNote }}</div>
     <div class="map-controls"><button aria-label="放大地图" @click="zoomIn"><Plus :size="17"/></button><button aria-label="缩小地图" @click="zoomOut"><Minus :size="17"/></button><button aria-label="恢复地图视图" @click="fitDemoArea"><LocateFixed :size="17"/></button></div>
     <button class="map-legend-toggle" :aria-expanded="legendOpen" @click="legendOpen = !legendOpen">图例</button>
-    <div v-if="legendOpen" class="map-legend"><span><i class="legend-dot green"></i>库存充足</span><span><i class="legend-dot orange"></i>待补车</span><span><i class="legend-dot blue"></i>较拥挤</span></div>
+    <div v-if="legendOpen" class="map-legend"><span><i class="legend-dot green"></i>库存充足</span><span><i class="legend-dot orange"></i>待补车</span><span><i class="legend-dot blue"></i>较拥挤</span><span v-if="tasks.some(t => t.status === 'RUNNING')"><i class="legend-truck"></i>运输车</span></div>
   </div>
 </template>
