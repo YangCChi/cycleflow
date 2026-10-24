@@ -8,7 +8,8 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api")
 public class ApiController {
     private final DispatchService service;
-    public ApiController(DispatchService service) { this.service = service; }
+    private final RoadMatrix matrix;
+    public ApiController(DispatchService service, RoadMatrix matrix) { this.service = service; this.matrix = matrix; }
     @GetMapping("/state") public Snapshot state() { return service.snapshot(); }
     @PatchMapping("/regions/{id}") public Snapshot update(@PathVariable int id, @RequestBody RegionUpdate update) { return service.update(id, update); }
     @GetMapping("/regions/{id}/forecast") public List<ForecastPoint> forecast(@PathVariable int id) { return service.forecast(id); }
@@ -18,4 +19,6 @@ public class ApiController {
     @PostMapping("/simulation/reset") public Snapshot reset(@RequestBody Map<String,String> body) { return service.reset(body.getOrDefault("scenario", "morning")); }
     @GetMapping("/experiments") public ExperimentResult experiment(@RequestParam(defaultValue="42") long seed) { return service.experiment(seed); }
     @GetMapping("/experiments/summary") public ExperimentSummary experimentSummary(@RequestParam(defaultValue="42") long seed, @RequestParam(defaultValue="5") int runs) { return service.experimentSummary(seed, runs); }
+    @GetMapping("/road-matrix") public RoadMatrixStatus roadMatrix() { return matrix.status(); }
+    @PostMapping("/road-matrix/refresh") public RoadMatrixStatus refreshRoadMatrix() { matrix.refreshNow(); return matrix.status(); }
 }

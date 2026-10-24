@@ -6,11 +6,11 @@ import java.util.*;
 /** Replays identical generated requests for each policy. Successful rides alone create returns. */
 public final class Simulation {
     private Simulation() {}
-    public static final String MODEL_NOTE = "规则需求模型 · 模拟网格距离 · 运输车取车点就近待命假设";
     private record Request(int minute, int source, int destination, int duration) {}
     private record Arrival(int minute, int destination, int quantity, boolean truck) {}
 
-    public static ExperimentResult run(List<Region> regions, String scenario, int start, long seed) {
+    public static ExperimentResult run(List<Region> regions, String scenario, int start, long seed,
+                                       double[][] km, int[][] roadMinutes, String distanceLabel) {
         Random random = new Random(seed);
         List<Request> requests = new ArrayList<>();
         for (int minute = 0; minute < 180; minute++) {
@@ -22,8 +22,8 @@ public final class Simulation {
             }
         }
         List<Experiment> results = new ArrayList<>();
-        for (String strategy : List.of("none", "threshold", "predictive")) results.add(replay(regions, requests, scenario, start, strategy));
-        return new ExperimentResult(seed, scenario, 180, MODEL_NOTE, results);
+        for (String strategy : List.of("none", "threshold", "predictive")) results.add(replay(regions, requests, scenario, start, strategy, km, roadMinutes));
+        return new ExperimentResult(seed, scenario, 180, "规则需求模型 · " + distanceLabel + " · 运输车取车点就近待命假设", results);
     }
     private static int weighted(List<Region> regions, String scenario, int minute, boolean out, Random random) {
         int total = regions.stream().mapToInt(r -> DemandModel.demand(r, scenario, minute)[out ? 0 : 1]).sum();
@@ -34,7 +34,8 @@ public final class Simulation {
         }
         return regions.size() - 1;
     }
-    private static Experiment replay(List<Region> regions, List<Request> requests, String scenario, int start, String strategy) {
+    private static Experiment replay(List<Region> regions, List<Request> requests, String scenario, int start, String strategy,
+                                     double[][] km, int[][] roadMinutes) {
         int[] stock = regions.stream().mapToInt(Region::stock).toArray();
         int initialTotal = Arrays.stream(stock).sum();
         List<Arrival> arrivals = new ArrayList<>();
@@ -64,7 +65,7 @@ public final class Simulation {
                     if (destination < 0) break;
                     int source = -1; double nearest = Double.MAX_VALUE;
                     for (int i = 0; i < stock.length; i++) {
-                        double d = DemandModel.distance(regions.get(i), regions.get(destination));
+                        double d = km[regions.get(i).id()][regions.get(destination).id()];
                         if (i != destination && stock[i] > target[i] && d < nearest) { source = i; nearest = d; }
                     }
                     if (source < 0) break;
@@ -72,7 +73,10 @@ public final class Simulation {
                     quantity = Math.min(quantity, regions.get(destination).capacity() - stock[destination] - incoming[destination]);
                     if (quantity <= 0) break;
                     stock[source] -= quantity; incoming[destination] += quantity;
-                    arrivals.add(new Arrival(minute + DemandModel.duration(nearest, quantity), destination, quantity, true));
+                    int duration = roadMinutes == null
+                            ? DemandModel.duration(nearest, quantity)
+                            : tripDuration(roadMinutes[regions.get(source).id()][regions.get(destination).id()], quantity);
+                    arrivals.add(new Arrival(minute + duration, destination, quantity, true));
                     moved += quantity; distance += nearest;
                 }
             }
@@ -88,5 +92,8 @@ public final class Simulation {
         int ending = Arrays.stream(stock).sum() + arrivals.stream().mapToInt(Arrival::quantity).sum();
         if (ending != initialTotal) throw new IllegalStateException("仿真车辆不守恒");
         return new Experiment(strategy, requests.size(), served, Math.round(1000.0 * served / requests.size()) / 10.0, shortageMinutes, Math.round(distance * 10) / 10.0, moved, ending);
+    }
+    private static int tripDuration(int roadMinutes, int quantity) {
+        return Math.max(5, roadMinutes + (int) Math.ceil(quantity * 0.25) + 2);
     }
 }

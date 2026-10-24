@@ -119,4 +119,7 @@
 .demo-actions{display:flex;gap:8px;margin-top:12px}
 .demo-actions .btn{flex:1;justify-content:center}
 .demo-modal p.muted{margin:10px 0 0;line-height:1.65}
+.demo-matrix{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid #e8eee6;color:#82908b;font-size:11px}
+.notice .text-button{margin-left:auto;flex:0 0 auto;white-space:nowrap;font-size:11px}
+@media(max-width:600px){.notice{flex-wrap:wrap}.notice .text-button{margin-left:31px}}
 @media(max-width:700px){.status-strip{gap:10px 20px;padding:13px 16px}.status-metric strong{font-size:18px}.status-actions{width:100%;margin-left:0;justify-content:space-between}.status-clock{order:-1}.disclosure>summary{padding:17px 16px}.disclosure-body{padding:0 14px 14px}}

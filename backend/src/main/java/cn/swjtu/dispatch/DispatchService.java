@@ -13,7 +13,8 @@ import jakarta.annotation.PostConstruct;
 public class DispatchService {
     private final JdbcTemplate db;
     private final TransactionTemplate tx;
-    public DispatchService(JdbcTemplate db, TransactionTemplate tx) { this.db = db; this.tx = tx; }
+    private final RoadMatrix roadMatrix;
+    public DispatchService(JdbcTemplate db, TransactionTemplate tx, RoadMatrix roadMatrix) { this.db = db; this.tx = tx; this.roadMatrix = roadMatrix; }
 
     @PostConstruct public void init() {
         if (db.queryForObject("SELECT COUNT(*) FROM regions", Integer.class) == 0) reset("morning");
@@ -52,7 +53,7 @@ public class DispatchService {
         int transit = tasks.stream().filter(t -> t.status().equals("RUNNING")).mapToInt(Task::quantity).sum();
         int completed = (int)tasks.stream().filter(t -> t.status().equals("COMPLETED")).count();
         double distance = tasks.stream().filter(t -> t.status().equals("COMPLETED")).mapToDouble(Task::distance).sum();
-        return new Snapshot(views, tasks, now, scenario, ground + transit, ground, transit, completed, Math.round(distance * 10) / 10.0);
+        return new Snapshot(views, tasks, now, scenario, ground + transit, ground, transit, completed, Math.round(distance * 10) / 10.0, roadMatrix.label());
     }
 
     public synchronized Snapshot reset(String scenario) {
@@ -94,6 +95,7 @@ public class DispatchService {
         return tx.execute(status -> {
             Snapshot snapshot = snapshot();
             List<Region> all = regions();
+            MatrixData matrix = matrixData(all);
             Map<Integer,Integer> supply = new HashMap<>(), need = new HashMap<>();
             for (RegionView r : snapshot.regions()) {
                 supply.put(r.id(), Math.max(0, r.stock() - r.reservedOut() - r.target()));
@@ -105,13 +107,16 @@ public class DispatchService {
                 if (snapshot.tasks().stream().anyMatch(t -> t.vehicle() == v && active(t))) continue;
                 Region destination = all.stream().filter(r -> need.get(r.id()) > 0).max(Comparator.comparingInt(r -> need.get(r.id()))).orElse(null);
                 if (destination == null) break;
-                Region source = all.stream().filter(r -> supply.get(r.id()) > 0 && r.id() != destination.id()).min(Comparator.comparingDouble(r -> DemandModel.distance(r, destination))).orElse(null);
+                Region source = all.stream().filter(r -> supply.get(r.id()) > 0 && r.id() != destination.id()).min(Comparator.comparingDouble(r -> matrix.km()[r.id()][destination.id()])).orElse(null);
                 if (source == null) break;
                 int destinationNeed = need.get(destination.id()), sourceSupply = supply.get(source.id());
                 int quantity = Math.min(20, Math.min(destinationNeed, sourceSupply));
-                double distance = DemandModel.distance(source, destination);
+                double distance = matrix.km()[source.id()][destination.id()];
+                int duration = matrix.minutes() == null
+                        ? DemandModel.duration(distance, quantity)
+                        : Math.max(5, matrix.minutes()[source.id()][destination.id()] + (int) Math.ceil(quantity * 0.25) + 2);
                 String reason = "目的区域缺口 %d 辆；源区域可调出 %d 辆；按就近匹配，本次搬运 %d 辆".formatted(destinationNeed, sourceSupply, quantity);
-                db.update("INSERT INTO dispatch_tasks(id,source_id,destination_id,quantity,vehicle,status,distance,duration,created_minute,reason) VALUES (?,?,?,?,?,?,?,?,?,?)", "JD-" + UUID.randomUUID().toString().substring(0,8).toUpperCase(), source.id(), destination.id(), quantity, vehicle, "PLANNED", distance, DemandModel.duration(distance, quantity), minute(), reason);
+                db.update("INSERT INTO dispatch_tasks(id,source_id,destination_id,quantity,vehicle,status,distance,duration,created_minute,reason) VALUES (?,?,?,?,?,?,?,?,?,?)", "JD-" + UUID.randomUUID().toString().substring(0,8).toUpperCase(), source.id(), destination.id(), quantity, vehicle, "PLANNED", distance, duration, minute(), reason);
                 supply.compute(source.id(), (k,n) -> n - quantity); need.compute(destination.id(), (k,n) -> n - quantity); generated = true;
             }
             if (!generated) throw error(snapshot.tasks().stream().anyMatch(DispatchService::active) ? "运输车已有待执行或在途任务，请先完成当前任务" : "当前没有可执行的调度任务：供需已平衡或没有富余车辆");
@@ -165,17 +170,26 @@ public class DispatchService {
 
     public synchronized ExperimentResult experiment(long seed) {
         ensureNoActiveTasks();
-        return Simulation.run(regions(), state("scenario"), minute(), seed);
+        List<Region> all = regions();
+        MatrixData matrix = matrixData(all);
+        return Simulation.run(all, state("scenario"), minute(), seed, matrix.km(), matrix.minutes(), matrix.label());
     }
 
     public synchronized ExperimentSummary experimentSummary(long baseSeed, int runCount) {
         if (runCount < 1 || runCount > 10) throw error("重复次数须在 1～10 之间");
         if (baseSeed < 0 || baseSeed + runCount - 1 > 999999) throw error("随机种子须在 0～999999 之间");
         ensureNoActiveTasks();
+        String scenario = state("scenario");
+        int now = minute();
+        List<Region> all = regions();
+        MatrixData matrix = matrixData(all);
         List<ExperimentRun> runs = new ArrayList<>();
+        String model = "";
         for (int i = 0; i < runCount; i++) {
             long seed = baseSeed + i;
-            runs.add(new ExperimentRun(seed, Simulation.run(regions(), state("scenario"), minute(), seed).results()));
+            ExperimentResult result = Simulation.run(all, scenario, now, seed, matrix.km(), matrix.minutes(), matrix.label());
+            if (model.isEmpty()) model = result.model();
+            runs.add(new ExperimentRun(seed, result.results()));
         }
         List<String> strategies = List.of("none", "threshold", "predictive");
         List<PolicySummary> summaries = new ArrayList<>();
@@ -189,12 +203,23 @@ public class DispatchService {
             summaries.add(new PolicySummary(strategies.get(i), round1(rates.getAverage()), round1(rates.getMin()),
                     round1(rates.getMax()), round1(shortageAvg), round1(distanceAvg), round1(movedAvg)));
         }
-        return new ExperimentSummary(baseSeed, runCount, state("scenario"), 180, Simulation.MODEL_NOTE, summaries, runs);
+        return new ExperimentSummary(baseSeed, runCount, scenario, 180, model, summaries, runs);
     }
 
     private void ensureNoActiveTasks() {
         if (tasks().stream().anyMatch(DispatchService::active)) throw error("请先完成或取消调度任务，再运行独立实验");
     }
+
+    private MatrixData matrixData(List<Region> all) {
+        if (roadMatrix.ready()) return new MatrixData(roadMatrix.kmMatrix(), roadMatrix.minuteMatrix(), roadMatrix.label());
+        double[][] km = new double[13][13];
+        for (Region source : all) for (Region destination : all) {
+            if (source.id() != destination.id()) km[source.id()][destination.id()] = DemandModel.distance(source, destination);
+        }
+        return new MatrixData(km, null, roadMatrix.label());
+    }
+
+    private record MatrixData(double[][] km, int[][] minutes, String label) {}
 
     private static double round1(double value) { return Math.round(value * 10) / 10.0; }
 }

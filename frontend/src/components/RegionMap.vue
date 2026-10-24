@@ -27,6 +27,10 @@ let switchingProvider = false
 let loadedTile = false
 let failedTiles = 0
 let amapLoader
+let pluginRequested = false
+const routePaths = new Map()
+const routeRequests = new Set()
+const routeFailed = new Set()
 
 const tileProviders = [
   { url: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png', attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' },
@@ -108,7 +112,7 @@ function drawLeafletRoutes() {
 function fitLeafletArea() {
   if (!map) return
   const points = props.regions.filter(isMapped).map(position)
-  if (points.length) map.fitBounds(L.latLngBounds(points), { padding: [45, 45], maxZoom: 14, animate: false })
+  if (points.length) map.fitBounds(L.latLngBounds(points), { padding: [45, 45], maxZoom: 15, animate: false })
   else map.setView(campus, 14)
 }
 
@@ -148,6 +152,33 @@ function initLeaflet() {
   window.setTimeout(() => map?.invalidateSize(), 120)
 }
 
+function planAmapRoute(task, source, destination) {
+  if (routeRequests.has(task.id) || routeFailed.has(task.id)) return
+  if (!window.AMap?.Driving) {
+    if (!pluginRequested && window.AMap?.plugin) {
+      pluginRequested = true
+      window.AMap.plugin('AMap.Driving', () => drawAmapRoutes())
+    }
+    return
+  }
+  routeRequests.add(task.id)
+  const options = {}
+  if (window.AMap.DrivingPolicy?.LEAST_TIME != null) options.policy = window.AMap.DrivingPolicy.LEAST_TIME
+  const driving = new window.AMap.Driving(options)
+  driving.search(new window.AMap.LngLat(...gcjPosition(source)), new window.AMap.LngLat(...gcjPosition(destination)), (status, result) => {
+    routeRequests.delete(task.id)
+    if (status !== 'complete' || !result?.routes?.length) { routeFailed.add(task.id); return }
+    const route = result.routes[0]
+    const path = route.path?.length ? route.path : (route.steps || []).flatMap(step => step.path || [])
+    if (!path.length) {
+      routeFailed.add(task.id)
+      return
+    }
+    routePaths.set(task.id, path)
+    if (amap) drawAmapRoutes()
+  })
+}
+
 function drawAmapRoutes() {
   if (!amap) return
   if (amapRoutes.length) amap.remove(amapRoutes)
@@ -156,11 +187,15 @@ function drawAmapRoutes() {
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
     if (!isMapped(source) || !isMapped(destination)) continue
-    amapRoutes.push(new window.AMap.Polyline({
-      path: [gcjPosition(source), gcjPosition(destination)],
-      strokeColor: '#078763', strokeWeight: 4, strokeOpacity: .9,
-      strokeStyle: 'dashed', strokeDasharray: [9, 7], zIndex: 60
-    }))
+    const cached = routePaths.get(task.id)
+    const path = cached || [gcjPosition(source), gcjPosition(destination)]
+    if (cached) {
+      amapRoutes.push(new window.AMap.Polyline({ path, strokeColor: '#ffffff', strokeWeight: 9, strokeOpacity: .95, strokeStyle: 'solid', zIndex: 58 }))
+      amapRoutes.push(new window.AMap.Polyline({ path, strokeColor: '#078763', strokeWeight: 5, strokeOpacity: 1, strokeStyle: 'solid', showDir: true, zIndex: 60 }))
+    } else {
+      amapRoutes.push(new window.AMap.Polyline({ path, strokeColor: '#078763', strokeWeight: 4, strokeOpacity: .9, strokeStyle: 'dashed', strokeDasharray: [9, 7], zIndex: 60 }))
+    }
+    if (!cached) planAmapRoute(task, source, destination)
   }
   if (amapRoutes.length) amap.add(amapRoutes)
 }
@@ -200,7 +235,7 @@ function drawAmap(fit) {
 
 function fitAmapArea() {
   if (!amap) return
-  if (amapMarkers.length) amap.setFitView(amapMarkers, false, [45, 45, 45, 45], 14)
+  if (amapMarkers.length) amap.setFitView(amapMarkers, false, [45, 45, 45, 45], 15)
   else {
     const [lng, lat] = wgs84ToGcj02(campus[1], campus[0])
     amap.setZoomAndCenter(14, [lng, lat])
@@ -279,6 +314,6 @@ onBeforeUnmount(() => {
     <div v-if="loadNote" class="map-tile-error" role="status">{{ loadNote }}</div>
     <div class="map-controls"><button aria-label="放大地图" @click="zoomIn"><Plus :size="17"/></button><button aria-label="缩小地图" @click="zoomOut"><Minus :size="17"/></button><button aria-label="恢复地图视图" @click="fitDemoArea"><LocateFixed :size="17"/></button></div>
     <div class="map-legend"><span><i class="legend-dot green"></i>库存充足</span><span><i class="legend-dot orange"></i>待补车</span><span><i class="legend-dot blue"></i>较拥挤</span></div>
-    <div class="map-disclaimer">停车点位未实测 · 连线非道路导航</div>
+    <div class="map-disclaimer">停车点位未实测 · 路线优先高德规划</div>
   </div>
 </template>

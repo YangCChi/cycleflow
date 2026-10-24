@@ -27,6 +27,14 @@ VITE_AMAP_SECURITY_CODE=你的安全密钥
 
 未配置或加载失败时会自动回退到 OpenStreetMap（优先 OSM Germany，再回退 Esri）。高德坐标会从 WGS-84 转为 GCJ-02，标记位置与公开坐标一致。若 Key 配置了域名白名单，需加入 `127.0.0.1`、`localhost` 以及实际的 Cloud Studio 预览域名；云端构建时在环境中设置同名变量即可，不要提交 `.env.local`。
 
+道路距离矩阵使用高德 **Web 服务** Key，放在项目根目录 `.env`（已忽略，不会提交）：
+
+```bash
+AMAP_WEB_KEY=你的Web服务Key
+```
+
+`scripts/start.sh` 会自动加载该文件。未配置或接口失败时，系统回退到模拟网格距离；道路矩阵可在页面手动刷新。
+
 ### Cloud Studio 运行
 
 工作区需要 Java 21、Maven 3.9、Node.js 22.12 及 npm。安装好后，在 Cloud Studio 编辑器顶部点击「运行」；项目中的 [`.vscode/preview.yml`](.vscode/preview.yml) 会执行 `scripts/start-cloud.sh`，构建前后端并开放 8080 端口。首次构建需要下载依赖，等待终端出现 `Tomcat started on port 8080` 后，在端口面板点击「查看预览」。也可以在云端终端运行 `bash scripts/start-cloud.sh`。
@@ -38,7 +46,8 @@ VITE_AMAP_SECURITY_CODE=你的安全密钥
 - 运营总览：一行状态摘要、高德地图（可回退 OpenStreetMap）真实街道底图、补车优先级；场景切换、时钟与播放收进「演示控制」弹窗。
 - 停车区域：真实地图选点联动库存详情与预测入口；支持搜索、类型筛选、修改名称、停车容量及安全库存，保存至后端。窄屏下区域表格改为可直接操作的卡片。
 - 需求预测：按场景规则计算未来借还量、两小时曲线和分时段供需余额。
-- 智能调度：缺口优先、就近匹配、每车载量 20 辆、两辆运输车；生成、取消、执行任务。
+- 智能调度：缺口优先、就近匹配、每车载量 20 辆、两辆运输车；生成、取消、执行任务。路线优先调用高德 Driving 插件沿道路绘制；任务里程和时长来自道路距离矩阵，失败时回退为直线示意和网格估算。
+- 道路距离矩阵：启动时抓取 12×12 区域间高德驾车距离和时长，调度与仿真实验共用同一份数据；可在页面手动刷新，矩阵未就绪时回退网格估算。
 - 搬运播放：每步推进 5 分钟；取车后计为运输中，到达后增加目的地库存。
 - 仿真实验：不调度、阈值就近、预测优先三种策略；同种子生成相同的 1,260 次请求，回放 180 分钟，结果可导出 CSV。
 - 任务记录：完整任务流水、状态筛选与搜索、生成原因、逐任务 CSV 导出。
@@ -60,9 +69,9 @@ VITE_AMAP_SECURITY_CODE=你的安全密钥
 
 这是可运行的工程原型，**不使用当地真实车辆、订单或 GPS 数据**。底图默认来自高德地图，需要联网加载；未配置 Key、Key 失效或加载失败时回退到 OpenStreetMap（OSM Germany → Esri World Street Map）。12 个停车标记是候选地点／示范区域，未经现场核验。兴业北街站和犀浦站的公开坐标只作为接驳区域的定位参考，不代表站口旁已有合法停车位。容量、库存、需求与时间均为模拟参数。
 
-地图支持缩放、拖动、选点和恢复视野。绿色虚线仅连接调度任务的起终点，不沿道路计算；任务里程仍由原有模拟网格估算，不能用于实际导航。地图服务及点位来源说明见 [docs/真实地图接入.md](docs/真实地图接入.md)。
+地图支持缩放、拖动、选点和恢复视野。绿色路线优先按高德驾车规划沿道路绘制；调度任务和仿真实验统一读取 12×12 道路距离矩阵，矩阵未就绪或接口失败时回退为起终点直线和模拟网格估算。距离测量使用驾车模式并考虑实时路况，矩阵会记录更新时间，不是固定不变的道路数据；路线几何与矩阵时长也可能因策略或路况略有差异。地图服务及点位来源说明见 [docs/真实地图接入.md](docs/真实地图接入.md)。
 
-需求预测目前为规则模型，没有训练机器学习模型。调度采用两点取送的贪心启发式，尚未接入 OR-Tools，不能称为全局最优。运输车假定在取车点就近待命，里程为取车点至送车点的网格估算，尚未计入运输车到取车点的空驶。
+需求预测目前为规则模型，没有训练机器学习模型。调度采用两点取送的贪心启发式，尚未接入 OR-Tools，不能称为全局最优。运输车假定在取车点就近待命，任务里程与时长取 12×12 道路矩阵（矩阵未就绪时回退网格估算），尚未计入运输车到取车点的空驶。
 
 工作台时钟只推进搬运任务，不自动生成骑行订单；借还事件在独立仿真实验中发生。成功借车才生成还车；目的地暂满时车辆延后归还。实验结束时在途单车仍计入总量。实验基于当前地面库存，存在待执行或在途任务时禁止开始实验。多种子对比只改变请求序列种子，初始库存、策略参数和运输资源保持一致。
 
@@ -72,7 +81,7 @@ VITE_AMAP_SECURITY_CODE=你的安全密钥
 
 默认数据位置为 `backend/data/`（从启动脚本运行时）。刷新或重启保留区域和任务，重置演示会清除这些修改。此目录不进入 Git。请先停止程序再备份数据库文件。
 
-本地演示使用 H2 的 MySQL 兼容模式。依赖已包含 MySQL 驱动，可通过 `DB_URL`、`DB_USER`、`DB_PASSWORD` 接入独立测试库；本版尚未验证 MySQL 实例，也未接入 MyBatis-Plus。不要在命令或源码里写入真实数据库密码。MySQL、MyBatis-Plus、道路路线服务和正式预测模型属于后续版本工作。
+本地演示使用 H2 的 MySQL 兼容模式。依赖已包含 MySQL 驱动，可通过 `DB_URL`、`DB_USER`、`DB_PASSWORD` 接入独立测试库；本版尚未验证 MySQL 实例，也未接入 MyBatis-Plus。不要在命令或源码里写入真实数据库密码。MySQL、MyBatis-Plus、多点路线优化和正式预测模型属于后续版本工作。
 
 ## 校验
 
@@ -91,8 +100,8 @@ scripts/    启动与校验脚本
 docs/       规划与验收记录
 ```
 
-API：`GET /api/state`、`PATCH /api/regions/{id}`、`GET /api/regions/{id}/forecast`、`POST /api/dispatch/generate`、`POST /api/dispatch/{id}/start`、`POST /api/dispatch/{id}/cancel`、`POST /api/simulation/advance`、`POST /api/simulation/reset`、`GET /api/experiments?seed=42`、`GET /api/experiments/summary?seed=42&runs=5`。
+API：`GET /api/state`、`PATCH /api/regions/{id}`、`GET /api/regions/{id}/forecast`、`POST /api/dispatch/generate`、`POST /api/dispatch/{id}/start`、`POST /api/dispatch/{id}/cancel`、`POST /api/simulation/advance`、`POST /api/simulation/reset`、`GET /api/experiments?seed=42`、`GET /api/experiments/summary?seed=42&runs=5`、`GET /api/road-matrix`、`POST /api/road-matrix/refresh`。
 
 ## 后续方向
 
-核验停车区域及坐标 → 接入道路路线服务与 MySQL → 补充本地采样 → 实现真实历史预测与多点路线优化 → 多随机种子实验及论文图表。
+核验停车区域及坐标 → 接入 MySQL → 补充本地采样 → 实现真实历史预测与 OR-Tools 多点路线优化（复用道路矩阵）→ 多随机种子实验及论文图表。

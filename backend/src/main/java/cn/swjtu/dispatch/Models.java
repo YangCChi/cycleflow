@@ -13,7 +13,9 @@ public final class Models {
                        double distance, int duration, int createdMinute, Integer startedMinute, Integer completedMinute,
                        String reason) {}
     public record Snapshot(List<RegionView> regions, List<Task> tasks, int minute, String scenario,
-                           int totalBikes, int groundBikes, int transitBikes, int completedTasks, double totalDistance) {}
+                           int totalBikes, int groundBikes, int transitBikes, int completedTasks, double totalDistance,
+                           String distanceModel) {}
+    public record RoadMatrixStatus(boolean configured, int entries, int total, String updatedAt, boolean loading) {}
     public record ForecastPoint(String time, int outflow, int inflow, int projectedStock) {}
     public record RegionUpdate(String name, Integer capacity, Integer safetyStock) {}
     public record Experiment(String strategy, int requested, int served, double serviceRate,

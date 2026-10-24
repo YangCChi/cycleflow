@@ -7,12 +7,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootTest(properties = {"spring.datasource.url=jdbc:h2:mem:dispatch-test;MODE=MySQL;DB_CLOSE_DELAY=-1"})
 class DispatchServiceTest {
     @Autowired DispatchService service;
-    @BeforeEach void reset() { service.reset("morning"); }
+    @Autowired JdbcTemplate db;
+    @BeforeEach void reset() {
+        db.update("DELETE FROM road_matrix");
+        db.update("DELETE FROM app_state WHERE state_key='matrix_updated_at'");
+        service.reset("morning");
+    }
 
     @Test void planReservesCapacityAndCannotDoubleBookVehicles() {
         Snapshot s = service.generate();
@@ -68,6 +74,18 @@ class DispatchServiceTest {
             }
             assertEquals(500, service.snapshot().groundBikes()); assertTrue(service.snapshot().tasks().isEmpty());
         }
+    }
+    @Test void roadMatrixIsUsedForExperimentsAndDispatch() {
+        for (int from = 1; from <= 12; from++) for (int to = 1; to <= 12; to++) {
+            if (from != to) db.update("INSERT INTO road_matrix(origin_id,destination_id,distance_km,duration_min) VALUES (?,?,?,?)", from, to, 2.0, 10);
+        }
+        db.update("INSERT INTO app_state(state_key,state_value) VALUES ('matrix_updated_at','10-23 15:40')");
+        ExperimentResult experiment = service.experiment(42);
+        assertTrue(experiment.model().contains("高德道路矩阵"));
+        for (Experiment result : experiment.results()) assertEquals(500, result.endingTotal());
+        Snapshot s = service.generate();
+        assertTrue(s.distanceModel().contains("高德道路矩阵"));
+        for (Task task : s.tasks()) assertEquals(2.0, task.distance());
     }
     @Test void generatedTasksExplainWhyTheyWerePlanned() {
         Snapshot s = service.generate();

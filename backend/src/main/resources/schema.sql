@@ -13,3 +13,8 @@ CREATE TABLE IF NOT EXISTS dispatch_tasks (
  FOREIGN KEY(source_id) REFERENCES regions(id), FOREIGN KEY(destination_id) REFERENCES regions(id)
 );
 ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS reason VARCHAR(300);
+CREATE TABLE IF NOT EXISTS road_matrix (
+ origin_id INT NOT NULL, destination_id INT NOT NULL,
+ distance_km DOUBLE NOT NULL, duration_min INT NOT NULL,
+ PRIMARY KEY(origin_id, destination_id)
+);
