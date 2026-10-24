@@ -420,3 +420,12 @@ tbody tr:hover{background:#fafafa}
 .summary-rows{margin:10px 0 4px;border-top:1px solid var(--line-soft)}
 .summary-rows .summary-row:last-child{border-bottom:0}
 .forecast-layout{align-items:start}
+
+/* experiments: parameters appear only when needed */
+.experiment-settings-toggle{display:inline-flex;align-items:center;gap:5px;border:0;background:none;padding:0;font-size:13px;color:var(--text-2)}
+.experiment-settings-toggle:hover{color:var(--text)}
+.experiment-settings-toggle .chev{color:#c7c7cc;transition:transform .2s}
+.experiment-settings-toggle .chev.open{transform:rotate(180deg)}
+.experiment-settings-body{display:flex;gap:26px;width:100%;padding-top:4px}
+.experiment-config{flex-wrap:wrap}
+.experiment-settings-body{flex:0 0 100%;align-items:center}
