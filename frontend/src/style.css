@@ -411,3 +411,12 @@ tbody tr:hover{background:#fafafa}
 .record-detail .record-reason-cell{grid-column:1/-1}
 .record-detail p{font-size:12px;line-height:1.7;color:var(--text-2)}
 @media(max-width:700px){.record-detail{grid-template-columns:1fr 1fr}.record-detail .record-reason-cell{grid-column:1/-1}}
+
+/* forecast: keep the headline number, open the reasoning on demand */
+.summary-toggle{display:inline-flex;align-items:center;gap:5px;margin:6px 0 0;padding:0;border:0;background:none;font-size:12px;color:var(--text-3)}
+.summary-toggle:hover{color:var(--text-2)}
+.summary-toggle .chev{transition:transform .2s}
+.summary-toggle .chev.open{transform:rotate(180deg)}
+.summary-rows{margin:10px 0 4px;border-top:1px solid var(--line-soft)}
+.summary-rows .summary-row:last-child{border-bottom:0}
+.forecast-layout{align-items:start}
