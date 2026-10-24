@@ -429,3 +429,4 @@ tbody tr:hover{background:#fafafa}
 .experiment-settings-body{display:flex;gap:26px;width:100%;padding-top:4px}
 .experiment-config{flex-wrap:wrap}
 .experiment-settings-body{flex:0 0 100%;align-items:center}
+.task-waiting{margin-top:12px;text-align:right;font-size:12px;color:var(--text-3)}

@@ -18,3 +18,5 @@ CREATE TABLE IF NOT EXISTS road_matrix (
  distance_km DOUBLE NOT NULL, duration_min INT NOT NULL,
  PRIMARY KEY(origin_id, destination_id)
 );
+ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS trip_id VARCHAR(40);
+ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS sequence_no INT DEFAULT 1;

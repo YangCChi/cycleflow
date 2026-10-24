@@ -22,15 +22,20 @@ class DispatchServiceTest {
 
     @Test void planReservesCapacityAndCannotDoubleBookVehicles() {
         Snapshot s = service.generate();
-        assertEquals(2, s.tasks().size());
+        assertTrue(s.tasks().size() >= 2);
         for (Task t : s.tasks()) { assertTrue(t.quantity() > 0 && t.quantity() <= 20); assertEquals("PLANNED", t.status()); }
         for (RegionView r : s.regions()) { assertTrue(r.stock() - r.reservedOut() >= 0); assertTrue(r.stock() + r.reservedIn() <= r.capacity()); }
         assertEquals(500, s.totalBikes());
+        for (int vehicle = 1; vehicle <= 2; vehicle++) {
+            final int v = vehicle;
+            List<Integer> sequences = s.tasks().stream().filter(t -> t.vehicle() == v).map(Task::sequence).sorted().toList();
+            if (!sequences.isEmpty()) assertEquals(List.of(1, 2), sequences);
+        }
         assertThrows(ResponseStatusException.class, () -> service.generate());
-        assertEquals(2, service.snapshot().tasks().size());
+        assertEquals(s.tasks().size(), service.snapshot().tasks().size());
     }
     @Test void pickupAndArrivalConserveBikesAndRejectRepeatedStart() {
-        Task t = service.generate().tasks().getFirst();
+        Task t = service.generate().tasks().stream().filter(task -> task.sequence() == 1).findFirst().orElseThrow();
         int initialDestination = service.snapshot().regions().stream().filter(r -> r.id() == t.destinationId()).findFirst().orElseThrow().stock();
         Snapshot started = service.action(t.id(), "start");
         assertEquals(500, started.totalBikes()); assertEquals(t.quantity(), started.transitBikes());
@@ -38,7 +43,7 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.action(t.id(), "start"));
         assertThrows(ResponseStatusException.class, () -> service.action(t.id(), "cancel"));
         Snapshot completed = started;
-        for (int i = 0; i < Math.ceil(t.duration() / 5.0); i++) completed = service.advance();
+        for (int i = 0; i < 60 && completed.tasks().stream().anyMatch(task -> task.status().equals("RUNNING")); i++) completed = service.advance();
         assertEquals(0, completed.transitBikes()); assertEquals(500, completed.totalBikes());
         assertEquals("COMPLETED", completed.tasks().stream().filter(task -> task.id().equals(t.id())).findFirst().orElseThrow().status());
         assertEquals(initialDestination + t.quantity(), completed.regions().stream().filter(r -> r.id() == t.destinationId()).findFirst().orElseThrow().stock());
@@ -50,10 +55,11 @@ class DispatchServiceTest {
         assertEquals(destination.capacity(), service.snapshot().regions().stream().filter(r -> r.id() == destination.id()).findFirst().orElseThrow().capacity());
     }
     @Test void cancellingReleasesVehicleAndReservations() {
-        Task task = service.generate().tasks().getFirst();
-        service.action(task.id(), "cancel");
+        Task task = service.generate().tasks().stream().filter(t -> t.sequence() == 1).findFirst().orElseThrow();
+        Snapshot cancelled = service.action(task.id(), "cancel");
+        for (Task leg : cancelled.tasks()) if (task.tripId().equals(leg.tripId())) assertEquals("CANCELLED", leg.status());
         Snapshot replanned = service.generate();
-        assertEquals(2, replanned.tasks().stream().filter(t -> t.status().equals("PLANNED")).count());
+        assertTrue(replanned.tasks().stream().filter(t -> t.status().equals("PLANNED")).count() >= 2);
         assertEquals(500, replanned.totalBikes());
     }
     @Test void editValidatesAndPersistsSettings() {
@@ -89,12 +95,14 @@ class DispatchServiceTest {
     }
     @Test void generatedTasksExplainWhyTheyWerePlanned() {
         Snapshot s = service.generate();
+        assertTrue(s.tasks().size() >= 2);
         for (Task t : s.tasks()) {
             assertNotNull(t.reason());
             assertFalse(t.reason().isBlank());
             assertTrue(t.reason().contains("缺口"));
+            assertTrue(t.reason().contains("第 " + t.sequence() + " 站"));
         }
-        assertEquals(2, service.snapshot().tasks().stream().filter(t -> t.reason() != null).count());
+        assertEquals(s.tasks().size(), service.snapshot().tasks().stream().filter(t -> t.reason() != null).count());
     }
     @Test void multiSeedSummaryIsReproducibleAndKeepsEveryRunConsistent() {
         ExperimentSummary a = service.experimentSummary(42, 3), b = service.experimentSummary(42, 3);
@@ -128,6 +136,32 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.reset("unknown"));
         assertEquals(before, service.snapshot());
     }
+    @Test void multiStopTripRunsLegByLeg() {
+        Snapshot s = service.generate();
+        Map<String, List<Task>> trips = new TreeMap<>();
+        for (Task t : s.tasks()) if (t.tripId() != null) trips.computeIfAbsent(t.tripId(), k -> new ArrayList<>()).add(t);
+        List<Task> trip = trips.values().stream().filter(legs -> legs.size() == 2)
+                .map(legs -> legs.stream().sorted(Comparator.comparingInt(Task::sequence)).toList())
+                .findFirst().orElseThrow();
+        Task first = trip.get(0), second = trip.get(1);
+        assertEquals(1, first.sequence()); assertEquals(2, second.sequence());
+        assertThrows(ResponseStatusException.class, () -> service.action(second.id(), "start"));
+        service.action(first.id(), "start");
+        assertEquals("RUNNING", status(first.id()));
+        assertEquals("PLANNED", status(second.id()));
+        for (int i = 0; i < 40 && !status(first.id()).equals("COMPLETED"); i++) service.advance();
+        assertEquals("COMPLETED", status(first.id()));
+        assertEquals("RUNNING", status(second.id()));
+        for (int i = 0; i < 40 && !status(second.id()).equals("COMPLETED"); i++) service.advance();
+        assertEquals("COMPLETED", status(second.id()));
+        assertEquals(500, service.snapshot().totalBikes());
+        assertEquals(0, service.snapshot().transitBikes());
+    }
+
+    private String status(String id) {
+        return service.snapshot().tasks().stream().filter(t -> t.id().equals(id)).findFirst().orElseThrow().status();
+    }
+
     @Test void demoMapPositionsAreStableAndInXipuArea() {
         Snapshot before = service.snapshot();
         assertEquals(12, before.regions().size());

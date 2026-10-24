@@ -30,7 +30,7 @@ public class DispatchService {
     }
     private Region region(int id) { return regions().stream().filter(r -> r.id() == id).findFirst().orElseThrow(() -> error("停车区域不存在")); }
     private List<Task> tasks() {
-        return db.query("SELECT * FROM dispatch_tasks ORDER BY created_minute DESC, id DESC", (rs, row) -> new Task(rs.getString("id"), rs.getInt("source_id"), rs.getInt("destination_id"), rs.getInt("quantity"), rs.getInt("vehicle"), rs.getString("status"), rs.getDouble("distance"), rs.getInt("duration"), rs.getInt("created_minute"), (Integer)rs.getObject("started_minute"), (Integer)rs.getObject("completed_minute"), rs.getString("reason")));
+        return db.query("SELECT * FROM dispatch_tasks ORDER BY created_minute DESC, id DESC", (rs, row) -> new Task(rs.getString("id"), rs.getInt("source_id"), rs.getInt("destination_id"), rs.getInt("quantity"), rs.getInt("vehicle"), rs.getString("status"), rs.getDouble("distance"), rs.getInt("duration"), rs.getInt("created_minute"), (Integer)rs.getObject("started_minute"), (Integer)rs.getObject("completed_minute"), rs.getString("reason"), rs.getString("trip_id"), rs.getInt("sequence_no")));
     }
     private static ResponseStatusException error(String message) { return new ResponseStatusException(HttpStatus.CONFLICT, message); }
     private static boolean active(Task t) { return t.status().equals("PLANNED") || t.status().equals("RUNNING"); }
@@ -105,19 +105,28 @@ public class DispatchService {
             for (int vehicle = 1; vehicle <= 2; vehicle++) {
                 final int v = vehicle;
                 if (snapshot.tasks().stream().anyMatch(t -> t.vehicle() == v && active(t))) continue;
-                Region destination = all.stream().filter(r -> need.get(r.id()) > 0).max(Comparator.comparingInt(r -> need.get(r.id()))).orElse(null);
-                if (destination == null) break;
-                Region source = all.stream().filter(r -> supply.get(r.id()) > 0 && r.id() != destination.id()).min(Comparator.comparingDouble(r -> matrix.km()[r.id()][destination.id()])).orElse(null);
-                if (source == null) break;
-                int destinationNeed = need.get(destination.id()), sourceSupply = supply.get(source.id());
-                int quantity = Math.min(20, Math.min(destinationNeed, sourceSupply));
-                double distance = matrix.km()[source.id()][destination.id()];
-                int duration = matrix.minutes() == null
-                        ? DemandModel.duration(distance, quantity)
-                        : Math.max(5, matrix.minutes()[source.id()][destination.id()] + (int) Math.ceil(quantity * 0.25) + 2);
-                String reason = "目的区域缺口 %d 辆；源区域可调出 %d 辆；按就近匹配，本次搬运 %d 辆".formatted(destinationNeed, sourceSupply, quantity);
-                db.update("INSERT INTO dispatch_tasks(id,source_id,destination_id,quantity,vehicle,status,distance,duration,created_minute,reason) VALUES (?,?,?,?,?,?,?,?,?,?)", "JD-" + UUID.randomUUID().toString().substring(0,8).toUpperCase(), source.id(), destination.id(), quantity, vehicle, "PLANNED", distance, duration, minute(), reason);
-                supply.compute(source.id(), (k,n) -> n - quantity); need.compute(destination.id(), (k,n) -> n - quantity); generated = true;
+                String tripId = "TRIP-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+                Integer position = null;
+                for (int leg = 1; leg <= 2; leg++) {
+                    final Integer from = position;
+                    Region destination = all.stream().filter(r -> need.get(r.id()) > 0 && (from == null || r.id() != from))
+                            .max(Comparator.comparingInt(r -> need.get(r.id()))).orElse(null);
+                    if (destination == null) break;
+                    Region source = all.stream().filter(r -> supply.get(r.id()) > 0 && r.id() != destination.id() && (from == null || r.id() != from))
+                            .min(Comparator.comparingDouble(r -> from == null ? matrix.km()[r.id()][destination.id()]
+                                    : matrix.km()[from][r.id()] + matrix.km()[r.id()][destination.id()])).orElse(null);
+                    if (source == null) break;
+                    int destinationNeed = need.get(destination.id()), sourceSupply = supply.get(source.id());
+                    int quantity = Math.min(20, Math.min(destinationNeed, sourceSupply));
+                    double distance = matrix.km()[source.id()][destination.id()];
+                    int duration = matrix.minutes() == null
+                            ? DemandModel.duration(distance, quantity)
+                            : Math.max(5, matrix.minutes()[source.id()][destination.id()] + (int) Math.ceil(quantity * 0.25) + 2);
+                    String reason = "第 %d 站：目的区域缺口 %d 辆；源区域可调出 %d 辆；多点行程顺路匹配".formatted(leg, destinationNeed, sourceSupply);
+                    db.update("INSERT INTO dispatch_tasks(id,source_id,destination_id,quantity,vehicle,status,distance,duration,created_minute,reason,trip_id,sequence_no) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", "JD-" + UUID.randomUUID().toString().substring(0,8).toUpperCase(), source.id(), destination.id(), quantity, vehicle, "PLANNED", distance, duration, minute(), reason, tripId, leg);
+                    supply.compute(source.id(), (k,n) -> n - quantity); need.compute(destination.id(), (k,n) -> n - quantity);
+                    position = destination.id(); generated = true;
+                }
             }
             if (!generated) throw error(snapshot.tasks().stream().anyMatch(DispatchService::active) ? "运输车已有待执行或在途任务，请先完成当前任务" : "当前没有可执行的调度任务：供需已平衡或没有富余车辆");
             return snapshot();
@@ -129,13 +138,13 @@ public class DispatchService {
             Task task = tasks().stream().filter(t -> t.id().equals(id)).findFirst().orElseThrow(() -> error("任务不存在"));
             if (action.equals("start")) {
                 if (!task.status().equals("PLANNED")) throw error("只有待执行任务可以开始");
-                Region source = region(task.sourceId());
-                if (source.stock() < task.quantity()) throw error("源区域库存不足，请重新生成方案");
-                db.update("UPDATE regions SET stock=stock-? WHERE id=?", task.quantity(), task.sourceId());
-                db.update("UPDATE dispatch_tasks SET status='RUNNING',started_minute=? WHERE id=?", minute(), id);
+                if (task.tripId() != null && task.sequence() > 1) throw error("请先从行程第一站开始执行");
+                startLeg(task);
             } else if (action.equals("cancel")) {
                 if (!task.status().equals("PLANNED")) throw error("仅待执行任务可取消");
-                db.update("UPDATE dispatch_tasks SET status='CANCELLED' WHERE id=?", id);
+                List<Task> trip = tripLegs(task);
+                if (trip.stream().anyMatch(t -> t.status().equals("RUNNING"))) throw error("行程已在执行中，无法取消");
+                for (Task leg : trip) if (leg.status().equals("PLANNED")) db.update("UPDATE dispatch_tasks SET status='CANCELLED' WHERE id=?", leg.id());
             } else throw error("不支持的操作");
             return snapshot();
         });
@@ -150,6 +159,7 @@ public class DispatchService {
                     if (destination.stock() + t.quantity() > destination.capacity()) throw error("目的区域容量不足");
                     db.update("UPDATE regions SET stock=stock+? WHERE id=?", t.quantity(), t.destinationId());
                     db.update("UPDATE dispatch_tasks SET status='COMPLETED',completed_minute=? WHERE id=?", now, t.id());
+                    startNextLeg(t);
                 }
             }
             return snapshot();
@@ -208,6 +218,30 @@ public class DispatchService {
 
     private void ensureNoActiveTasks() {
         if (tasks().stream().anyMatch(DispatchService::active)) throw error("请先完成或取消调度任务，再运行独立实验");
+    }
+
+    private List<Task> tripLegs(Task task) {
+        if (task.tripId() == null) return List.of(task);
+        return tasks().stream().filter(t -> task.tripId().equals(t.tripId()))
+                .sorted(Comparator.comparingInt(Task::sequence)).toList();
+    }
+
+    private void startLeg(Task leg) {
+        Region source = region(leg.sourceId());
+        if (source.stock() < leg.quantity()) throw error("源区域库存不足，请重新生成方案");
+        db.update("UPDATE regions SET stock=stock-? WHERE id=?", leg.quantity(), leg.sourceId());
+        db.update("UPDATE dispatch_tasks SET status='RUNNING',started_minute=? WHERE id=?", minute(), leg.id());
+    }
+
+    private void startNextLeg(Task leg) {
+        if (leg.tripId() == null) return;
+        tasks().stream().filter(t -> leg.tripId().equals(t.tripId())
+                        && t.sequence() == leg.sequence() + 1 && t.status().equals("PLANNED"))
+                .findFirst().ifPresent(next -> {
+                    Region source = region(next.sourceId());
+                    if (source.stock() >= next.quantity()) startLeg(next);
+                    else db.update("UPDATE dispatch_tasks SET status='CANCELLED', reason=? WHERE id=?", "上一站完成后源区域库存不足，行程中止", next.id());
+                });
     }
 
     private MatrixData matrixData(List<Region> all) {
