@@ -440,3 +440,16 @@ tbody tr:hover{background:#fafafa}
 .legend-truck{display:inline-block;width:10px;height:10px;border-radius:50%;background:#0a7c5a;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
 .task-deadline{margin-top:8px;font-size:11px;color:var(--text-3)}
 .task-deadline.late{color:#b3441f}
+
+/* planner comparison */
+.plan-compare{margin-top:22px;padding:22px 24px}
+.plan-compare-head{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.plan-compare-head h2{font-size:16px;font-weight:600}
+.plan-compare-head p{font-size:12px;color:var(--text-3);margin-top:6px}
+.plan-compare-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:20px}
+.plan-compare-grid>div{border-top:1px solid var(--line-soft);padding-top:14px;display:flex;flex-direction:column;gap:6px}
+.plan-compare-grid span{font-size:11px;color:var(--text-3)}
+.plan-compare-grid strong{font-size:24px;font-weight:600;letter-spacing:-.02em;color:var(--text)}
+.plan-compare-grid strong.good{color:var(--accent)}
+.plan-compare-grid small{font-size:11px;color:var(--text-3)}
+.plan-compare-hint{margin-top:16px;font-size:12px;color:var(--text-3)}

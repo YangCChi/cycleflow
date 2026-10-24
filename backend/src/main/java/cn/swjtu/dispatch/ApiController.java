@@ -19,6 +19,7 @@ public class ApiController {
     @PostMapping("/simulation/reset") public Snapshot reset(@RequestBody Map<String,String> body) { return service.reset(body.getOrDefault("scenario", "morning")); }
     @GetMapping("/experiments") public ExperimentResult experiment(@RequestParam(defaultValue="42") long seed) { return service.experiment(seed); }
     @GetMapping("/experiments/summary") public ExperimentSummary experimentSummary(@RequestParam(defaultValue="42") long seed, @RequestParam(defaultValue="5") int runs) { return service.experimentSummary(seed, runs); }
+    @GetMapping("/dispatch/compare") public PlanComparison comparePlans() { return service.planComparison(); }
     @GetMapping("/road-matrix") public RoadMatrixStatus roadMatrix() { return matrix.status(); }
     @PostMapping("/road-matrix/refresh") public RoadMatrixStatus refreshRoadMatrix() { matrix.refreshNow(); return matrix.status(); }
 }

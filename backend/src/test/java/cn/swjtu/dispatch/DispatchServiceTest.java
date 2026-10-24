@@ -142,6 +142,17 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.reset("unknown"));
         assertEquals(before, service.snapshot());
     }
+    @Test void plannerComparisonReportsBothPlans() {
+        PlanComparison comparison = service.planComparison();
+        assertTrue(comparison.legs() >= 2);
+        assertTrue(comparison.greedyKm() > 0);
+        assertTrue(comparison.greedyMinutes() > 0);
+        if (comparison.ortoolsAvailable()) {
+            assertTrue(comparison.ortoolsKm() > 0);
+            assertTrue(comparison.ortoolsMinutes() > 0);
+        }
+    }
+
     @Test void orToolsPlannerCouplesLoadsWithinCapacity() {
         double[][] km = new double[13][13];
         for (int from = 1; from <= 12; from++) for (int to = 1; to <= 12; to++) if (from != to) km[from][to] = Math.abs(from - to);

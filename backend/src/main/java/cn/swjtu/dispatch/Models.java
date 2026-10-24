@@ -24,6 +24,8 @@ public final class Models {
                                    List<Experiment> results) {}
     public record PolicySummary(String strategy, double serviceRateAvg, double serviceRateMin, double serviceRateMax,
                                 double shortageMinutesAvg, double distanceAvg, double movedAvg) {}
+    public record PlanComparison(int legs, double greedyKm, int greedyMinutes,
+                                 Double ortoolsKm, Integer ortoolsMinutes, boolean ortoolsAvailable) {}
     public record ExperimentRun(long seed, List<Experiment> results) {}
     public record ExperimentSummary(long baseSeed, int runCount, String scenario, int durationMinutes, String model,
                                     List<PolicySummary> results, List<ExperimentRun> runs) {}

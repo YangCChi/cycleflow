@@ -102,25 +102,7 @@ public class DispatchService {
                 if (snapshot.tasks().stream().noneMatch(t -> t.vehicle() == v && active(t))) freeVehicles.add(vehicle);
             }
             if (freeVehicles.isEmpty()) throw error("运输车已有待执行或在途任务，请先完成当前任务");
-            Map<Integer,Integer> supply = new HashMap<>(), need = new HashMap<>();
-            for (RegionView r : snapshot.regions()) {
-                supply.put(r.id(), Math.max(0, r.stock() - r.reservedOut() - r.target()));
-                need.put(r.id(), Math.min(r.shortage(), r.capacity() - r.stock() - r.reservedIn()));
-            }
-            List<RouteOptimizer.Leg> legs = new ArrayList<>();
-            while (legs.size() < 3 * freeVehicles.size()) {
-                Region destination = all.stream().filter(r -> need.get(r.id()) > 0)
-                        .max(Comparator.comparingInt(r -> need.get(r.id()))).orElse(null);
-                if (destination == null) break;
-                if (need.get(destination.id()) < 5) break;
-                Region source = all.stream().filter(r -> supply.get(r.id()) > 0 && r.id() != destination.id())
-                        .min(Comparator.comparingDouble(r -> matrix.km()[r.id()][destination.id()])).orElse(null);
-                if (source == null) break;
-                int destinationNeed = need.get(destination.id()), sourceSupply = supply.get(source.id());
-                int quantity = Math.min(20, Math.min(destinationNeed, sourceSupply));
-                legs.add(new RouteOptimizer.Leg(source.id(), destination.id(), quantity, destinationNeed, sourceSupply));
-                supply.compute(source.id(), (k,n) -> n - quantity); need.compute(destination.id(), (k,n) -> n - quantity);
-            }
+            List<RouteOptimizer.Leg> legs = candidateLegs(snapshot, all, matrix, 3 * freeVehicles.size());
             if (legs.isEmpty()) throw error("当前没有可执行的调度任务：供需已平衡或没有富余车辆");
             int[] latest = new int[legs.size()];
             for (int i = 0; i < legs.size(); i++) latest[i] = slaMinutes(region(legs.get(i).destination()).kind());
@@ -313,6 +295,94 @@ public class DispatchService {
             case "gate" -> 60;
             default -> 75;
         };
+    }
+
+    private List<RouteOptimizer.Leg> candidateLegs(Snapshot snapshot, List<Region> all, MatrixData matrix, int maxLegs) {
+        Map<Integer,Integer> supply = new HashMap<>(), need = new HashMap<>();
+        for (RegionView r : snapshot.regions()) {
+            supply.put(r.id(), Math.max(0, r.stock() - r.reservedOut() - r.target()));
+            need.put(r.id(), Math.min(r.shortage(), r.capacity() - r.stock() - r.reservedIn()));
+        }
+        List<RouteOptimizer.Leg> legs = new ArrayList<>();
+        while (legs.size() < maxLegs) {
+            Region destination = all.stream().filter(r -> need.get(r.id()) > 0)
+                    .max(Comparator.comparingInt(r -> need.get(r.id()))).orElse(null);
+            if (destination == null || need.get(destination.id()) < 5) break;
+            Region source = all.stream().filter(r -> supply.get(r.id()) > 0 && r.id() != destination.id())
+                    .min(Comparator.comparingDouble(r -> matrix.km()[r.id()][destination.id()])).orElse(null);
+            if (source == null) break;
+            int destinationNeed = need.get(destination.id()), sourceSupply = supply.get(source.id());
+            int quantity = Math.min(20, Math.min(destinationNeed, sourceSupply));
+            legs.add(new RouteOptimizer.Leg(source.id(), destination.id(), quantity, destinationNeed, sourceSupply));
+            supply.compute(source.id(), (k,n) -> n - quantity);
+            need.compute(destination.id(), (k,n) -> n - quantity);
+        }
+        return legs;
+    }
+
+    private List<RouteOptimizer.Leg> candidateLegs(List<Region> all, MatrixData matrix, int maxLegs) {
+        String scenario = state("scenario");
+        int now = minute();
+        Map<Integer,Integer> supply = new HashMap<>(), need = new HashMap<>();
+        for (Region r : all) {
+            int target = DemandModel.target(r, scenario, now);
+            supply.put(r.id(), Math.max(0, r.stock() - target));
+            need.put(r.id(), Math.max(0, target - r.stock()));
+        }
+        List<RouteOptimizer.Leg> legs = new ArrayList<>();
+        while (legs.size() < maxLegs) {
+            Region destination = all.stream().filter(r -> need.get(r.id()) > 0)
+                    .max(Comparator.comparingInt(r -> need.get(r.id()))).orElse(null);
+            if (destination == null || need.get(destination.id()) < 5) break;
+            Region source = all.stream().filter(r -> supply.get(r.id()) > 0 && r.id() != destination.id())
+                    .min(Comparator.comparingDouble(r -> matrix.km()[r.id()][destination.id()])).orElse(null);
+            if (source == null) break;
+            int destinationNeed = need.get(destination.id()), sourceSupply = supply.get(source.id());
+            int quantity = Math.min(20, Math.min(destinationNeed, sourceSupply));
+            legs.add(new RouteOptimizer.Leg(source.id(), destination.id(), quantity, destinationNeed, sourceSupply));
+            supply.compute(source.id(), (k,n) -> n - quantity);
+            need.compute(destination.id(), (k,n) -> n - quantity);
+        }
+        return legs;
+    }
+
+    public synchronized PlanComparison planComparison() {
+        List<Region> all = regions();
+        MatrixData matrix = matrixData(all);
+        List<RouteOptimizer.Leg> legs = candidateLegs(all, matrix, 6);
+        if (legs.isEmpty()) throw error("当前没有可对比的搬运需求");
+        List<RouteOptimizer.Route> greedy = serialRoutes(legs, List.of(1, 2));
+        List<RouteOptimizer.Route> optimized = RouteOptimizer.plan(matrix.km(), legs);
+        return new PlanComparison(legs.size(), routeKm(greedy, matrix), routeMinutes(greedy, matrix),
+                optimized == null ? null : routeKm(optimized, matrix),
+                optimized == null ? null : routeMinutes(optimized, matrix),
+                optimized != null);
+    }
+
+    private double routeKm(List<RouteOptimizer.Route> routes, MatrixData matrix) {
+        double total = 0;
+        for (RouteOptimizer.Route route : routes) {
+            int previous = -1;
+            for (RouteOptimizer.Stop stop : route.stops()) {
+                if (previous >= 0 && previous != stop.region()) total += matrix.km()[previous][stop.region()];
+                previous = stop.region();
+            }
+        }
+        return Math.round(total * 10) / 10.0;
+    }
+
+    private int routeMinutes(List<RouteOptimizer.Route> routes, MatrixData matrix) {
+        int total = 0;
+        for (RouteOptimizer.Route route : routes) {
+            int previous = -1, time = 0;
+            for (RouteOptimizer.Stop stop : route.stops()) {
+                if (previous >= 0) time += travelMinutes(matrix, previous, stop.region());
+                previous = stop.region();
+                time += serviceMinutes(Math.abs(stop.quantity()));
+            }
+            total = Math.max(total, time);
+        }
+        return total;
     }
 
     private List<RouteOptimizer.Route> applyDeadlines(List<RouteOptimizer.Route> routes, int[] latest, MatrixData matrix) {
