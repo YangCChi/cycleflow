@@ -108,10 +108,11 @@ public class DispatchService {
                 need.put(r.id(), Math.min(r.shortage(), r.capacity() - r.stock() - r.reservedIn()));
             }
             List<RouteOptimizer.Leg> legs = new ArrayList<>();
-            while (legs.size() < 2 * freeVehicles.size()) {
+            while (legs.size() < 3 * freeVehicles.size()) {
                 Region destination = all.stream().filter(r -> need.get(r.id()) > 0)
                         .max(Comparator.comparingInt(r -> need.get(r.id()))).orElse(null);
                 if (destination == null) break;
+                if (need.get(destination.id()) < 5) break;
                 Region source = all.stream().filter(r -> supply.get(r.id()) > 0 && r.id() != destination.id())
                         .min(Comparator.comparingDouble(r -> matrix.km()[r.id()][destination.id()])).orElse(null);
                 if (source == null) break;
@@ -137,9 +138,10 @@ public class DispatchService {
                 for (int leg = 0; leg < route.size(); leg++) {
                     RouteOptimizer.Leg move = route.get(leg);
                     double distance = matrix.km()[move.source()][move.destination()];
+                    int deadheadMinutes = previous == null || matrix.minutes() == null ? 0 : matrix.minutes()[previous][move.source()];
                     int duration = matrix.minutes() == null
                             ? DemandModel.duration(distance, move.quantity())
-                            : Math.max(5, matrix.minutes()[move.source()][move.destination()] + (int) Math.ceil(move.quantity() * 0.25) + 2);
+                            : Math.max(5, deadheadMinutes + matrix.minutes()[move.source()][move.destination()] + (int) Math.ceil(move.quantity() * 0.25) + 2);
                     String deadhead = previous == null ? "" : "；空驶 %.1f km".formatted(matrix.km()[previous][move.source()]);
                     String reason = "第 %d 站：目的区域缺口 %d 辆；源区域可调出 %d 辆；%s%s"
                             .formatted(leg + 1, move.destinationNeed(), move.sourceSupply(), optimized ? "OR-Tools 排序" : "就近回退", deadhead);

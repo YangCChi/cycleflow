@@ -44,7 +44,7 @@ public final class RouteOptimizer {
                     Math.round(cost[manager.indexToNode(from)][manager.indexToNode(to)] * 1000));
             routing.setArcCostEvaluatorOfAllVehicles(transit);
             int stops = routing.registerUnaryTransitCallback(from -> manager.indexToNode(from) == 0 ? 0 : 1);
-            routing.addDimensionWithVehicleCapacity(stops, 0, new long[]{2, 2}, true, "Stops");
+            routing.addDimensionWithVehicleCapacity(stops, 0, new long[]{3, 3}, true, "Stops");
             RoutingSearchParameters parameters = main.defaultRoutingSearchParameters()
                     .toBuilder()
                     .setFirstSolutionStrategy(FirstSolutionStrategy.Value.PATH_CHEAPEST_ARC)

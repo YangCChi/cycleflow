@@ -29,7 +29,10 @@ class DispatchServiceTest {
         for (int vehicle = 1; vehicle <= 2; vehicle++) {
             final int v = vehicle;
             List<Integer> sequences = s.tasks().stream().filter(t -> t.vehicle() == v).map(Task::sequence).sorted().toList();
-            if (!sequences.isEmpty()) assertEquals(List.of(1, 2), sequences);
+            if (!sequences.isEmpty()) {
+                assertEquals(java.util.stream.IntStream.rangeClosed(1, sequences.size()).boxed().toList(), sequences);
+                assertTrue(sequences.size() <= 3);
+            }
         }
         assertThrows(ResponseStatusException.class, () -> service.generate());
         assertEquals(s.tasks().size(), service.snapshot().tasks().size());
@@ -137,7 +140,7 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.reset("unknown"));
         assertEquals(before, service.snapshot());
     }
-    @Test void orToolsPlannerServesEveryLegWithinTwoStops() {
+    @Test void orToolsPlannerServesEveryLegWithinThreeStops() {
         double[][] km = new double[13][13];
         for (int from = 1; from <= 12; from++) for (int to = 1; to <= 12; to++) if (from != to) km[from][to] = Math.abs(from - to);
         List<RouteOptimizer.Leg> legs = List.of(
@@ -149,14 +152,14 @@ class DispatchServiceTest {
         assertNotNull(routes, "OR-Tools planner should be available");
         assertEquals(2, routes.size());
         assertEquals(4, routes.stream().mapToInt(List::size).sum());
-        assertTrue(routes.stream().allMatch(route -> route.size() <= 2));
+        assertTrue(routes.stream().allMatch(route -> route.size() <= 3));
     }
 
     @Test void multiStopTripRunsLegByLeg() {
         Snapshot s = service.generate();
         Map<String, List<Task>> trips = new TreeMap<>();
         for (Task t : s.tasks()) if (t.tripId() != null) trips.computeIfAbsent(t.tripId(), k -> new ArrayList<>()).add(t);
-        List<Task> trip = trips.values().stream().filter(legs -> legs.size() == 2)
+        List<Task> trip = trips.values().stream().filter(legs -> legs.size() >= 2)
                 .map(legs -> legs.stream().sorted(Comparator.comparingInt(Task::sequence)).toList())
                 .findFirst().orElseThrow();
         Task first = trip.get(0), second = trip.get(1);
@@ -168,7 +171,7 @@ class DispatchServiceTest {
         for (int i = 0; i < 40 && !status(first.id()).equals("COMPLETED"); i++) service.advance();
         assertEquals("COMPLETED", status(first.id()));
         assertEquals("RUNNING", status(second.id()));
-        for (int i = 0; i < 40 && !status(second.id()).equals("COMPLETED"); i++) service.advance();
+        for (int i = 0; i < 60 && service.snapshot().tasks().stream().anyMatch(t -> t.status().equals("RUNNING")); i++) service.advance();
         assertEquals("COMPLETED", status(second.id()));
         assertEquals(500, service.snapshot().totalBikes());
         assertEquals(0, service.snapshot().transitBikes());
