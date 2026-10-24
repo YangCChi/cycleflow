@@ -18,6 +18,7 @@ const data = ref(null), loading = ref(true), busy = ref(false), error = ref(''),
 const forecasting = ref(false), forecast = ref([]), summary = ref(null), seed = ref(42), runs = ref(5), experimenting = ref(false), playing = ref(false), matrixRefreshing = ref(false)
 const taskFilter = ref('all'), taskSearch = ref(''), showAllAlerts = ref(false)
 const mapDetail = ref(false), priorityOpen = ref(false)
+const expandedTask = ref(null)
 const editDialog = ref(null), resetDialog = ref(null), infoDialog = ref(null), demoDialog = ref(null), edit = ref({}), pendingScenario = ref('morning'), formError = ref('')
 const scenarioNames = { morning: '工作日早高峰', evening: '工作日晚高峰', weekend: '周末出行' }
 const typeNames = { gate: '校门接驳', metro: '轨道接驳', residential: '居住区域', commercial: '商业区域' }
@@ -48,6 +49,7 @@ const filteredTasks = computed(() => {
 const time = minute => `${String(Math.floor(minute / 60) % 24).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
 const regionName = id => regions.value.find(r => r.id === id)?.name || '未知区域'
 function pickRegion(id) { selected.value = id; mapDetail.value = true }
+function toggleTask(id) { expandedTask.value = expandedTask.value === id ? null : id }
 let interval, toastTimer, forecastRequest = 0
 
 async function api(path, method = 'GET', body) {
@@ -230,12 +232,7 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
 
           <template v-if="current === 'records'">
             <div class="status-strip">
-              <div class="status-metric"><span>任务总数</span><strong>{{ taskStats.total }}</strong><small>项</small></div>
-              <div class="status-metric"><span>待执行</span><strong>{{ taskStats.planned }}</strong><small>项</small></div>
-              <div class="status-metric"><span>运输中</span><strong>{{ taskStats.running }}</strong><small>项</small></div>
-              <div class="status-metric"><span>已完成</span><strong>{{ taskStats.completed }}</strong><small>项</small></div>
-              <div class="status-metric"><span>已取消</span><strong>{{ taskStats.cancelled }}</strong><small>项</small></div>
-              <div class="status-metric"><span>已完成搬运</span><strong>{{ taskStats.moved }}</strong><small>辆</small></div>
+              <p class="status-summary"><strong>{{ taskStats.total }}</strong> 项任务<span v-if="taskStats.planned"> · 待执行 {{ taskStats.planned }}</span><span v-if="taskStats.running"> · 运输中 {{ taskStats.running }}</span><span v-if="taskStats.completed"> · 已完成 {{ taskStats.completed }}</span><span v-if="taskStats.cancelled"> · 已取消 {{ taskStats.cancelled }}</span></p>
             </div>
             <article class="panel table-panel records-panel">
               <div class="table-toolbar">
@@ -243,18 +240,25 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
                 <select v-model="taskFilter" aria-label="筛选任务状态"><option value="all">全部状态</option><option v-for="(name,key) in statusNames" :key="key" :value="key">{{ name }}</option></select>
                 <span class="table-count">共 {{ filteredTasks.length }} 条记录</span>
               </div>
-              <div class="table-scroll"><table><thead><tr><th>任务编号</th><th>搬运路线</th><th>数量</th><th>车辆</th><th>状态</th><th>时间</th><th>里程 / 时长</th><th>生成原因</th></tr></thead><tbody>
-                <tr v-for="task in filteredTasks" :key="task.id">
-                  <td><span class="task-id">{{ task.id }}</span></td>
-                  <td><div class="record-route"><strong>{{ regionName(task.sourceId) }}</strong><ArrowRight :size="14"/><strong>{{ regionName(task.destinationId) }}</strong></div></td>
-                  <td>{{ task.quantity }} 辆</td>
-                  <td>0{{ task.vehicle }}</td>
-                  <td><span :class="['task-status', task.status.toLowerCase()]">{{ statusNames[task.status] }}</span></td>
-                  <td><div class="record-time"><span>创建 {{ time(task.createdMinute) }}</span><span v-if="task.startedMinute != null">开始 {{ time(task.startedMinute) }}</span><span v-if="task.completedMinute != null">完成 {{ time(task.completedMinute) }}</span></div></td>
-                  <td>{{ task.distance.toFixed(1) }} km / {{ task.duration }} 分钟</td>
-                  <td class="record-reason">{{ task.reason || '旧记录未保存原因' }}</td>
-                </tr>
-                <tr v-if="!filteredTasks.length"><td colspan="8" class="empty-table">没有符合条件的任务记录。生成调度方案并推进时间后，这里会出现完整轨迹。</td></tr>
+              <div class="table-scroll"><table><thead><tr><th>任务编号</th><th>搬运路线</th><th>数量</th><th>状态</th><th></th></tr></thead><tbody>
+                <template v-for="task in filteredTasks" :key="task.id">
+                  <tr class="record-row" @click="toggleTask(task.id)">
+                    <td><span class="task-id">{{ task.id }}</span></td>
+                    <td><div class="record-route"><strong>{{ regionName(task.sourceId) }}</strong><ArrowRight :size="14"/><strong>{{ regionName(task.destinationId) }}</strong></div></td>
+                    <td>{{ task.quantity }} 辆</td>
+                    <td><span :class="['task-status', task.status.toLowerCase()]">{{ statusNames[task.status] }}</span></td>
+                    <td><ChevronDown :size="16" :class="['chev', { open: expandedTask === task.id }]"/></td>
+                  </tr>
+                  <tr v-if="expandedTask === task.id" class="record-detail-row">
+                    <td colspan="5"><div class="record-detail">
+                      <div><span>运输车</span><strong>0{{ task.vehicle }}</strong></div>
+                      <div><span>开始 / 完成</span><strong>{{ task.startedMinute != null ? time(task.startedMinute) : '未开始' }}<template v-if="task.completedMinute != null"> → {{ time(task.completedMinute) }}</template></strong></div>
+                      <div><span>里程 / 时长</span><strong>{{ task.distance.toFixed(1) }} km / {{ task.duration }} 分钟</strong></div>
+                      <div class="record-reason-cell"><span>生成原因</span><p>{{ task.reason || '旧记录未保存原因' }}</p></div>
+                    </div></td>
+                  </tr>
+                </template>
+                <tr v-if="!filteredTasks.length"><td colspan="5" class="empty-table">没有符合条件的任务记录。生成调度方案并推进时间后，这里会出现完整轨迹。</td></tr>
               </tbody></table></div>
               <div class="table-footer"><Info :size="16"/>记录由后端持久化；时间随工作台 +5 分钟推进，重置场景会清除全部任务。</div>
             </article>
