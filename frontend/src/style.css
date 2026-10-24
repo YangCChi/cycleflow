@@ -438,3 +438,5 @@ tbody tr:hover{background:#fafafa}
 .truck-marker{line-height:0;filter:drop-shadow(0 4px 10px rgba(0,0,0,.28));transition:transform .4s linear}
 .amap-marker-shell{line-height:0}
 .legend-truck{display:inline-block;width:10px;height:10px;border-radius:50%;background:#0a7c5a;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+.task-deadline{margin-top:8px;font-size:11px;color:var(--text-3)}
+.task-deadline.late{color:#b3441f}

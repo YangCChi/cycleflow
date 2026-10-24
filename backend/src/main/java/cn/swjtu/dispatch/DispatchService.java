@@ -30,7 +30,7 @@ public class DispatchService {
     }
     private Region region(int id) { return regions().stream().filter(r -> r.id() == id).findFirst().orElseThrow(() -> error("停车区域不存在")); }
     private List<Task> tasks() {
-        return db.query("SELECT * FROM dispatch_tasks ORDER BY created_minute DESC, id DESC", (rs, row) -> new Task(rs.getString("id"), rs.getInt("source_id"), rs.getInt("destination_id"), rs.getInt("quantity"), rs.getInt("vehicle"), rs.getString("status"), rs.getDouble("distance"), rs.getInt("duration"), rs.getInt("created_minute"), (Integer)rs.getObject("started_minute"), (Integer)rs.getObject("completed_minute"), rs.getString("reason"), rs.getString("trip_id"), rs.getInt("sequence_no"), (Integer)rs.getObject("pickup_seq"), (Integer)rs.getObject("delivery_seq")));
+        return db.query("SELECT * FROM dispatch_tasks ORDER BY created_minute DESC, id DESC", (rs, row) -> new Task(rs.getString("id"), rs.getInt("source_id"), rs.getInt("destination_id"), rs.getInt("quantity"), rs.getInt("vehicle"), rs.getString("status"), rs.getDouble("distance"), rs.getInt("duration"), rs.getInt("created_minute"), (Integer)rs.getObject("started_minute"), (Integer)rs.getObject("completed_minute"), rs.getString("reason"), rs.getString("trip_id"), rs.getInt("sequence_no"), (Integer)rs.getObject("pickup_seq"), (Integer)rs.getObject("delivery_seq"), (Integer)rs.getObject("deadline_minute")));
     }
     private static ResponseStatusException error(String message) { return new ResponseStatusException(HttpStatus.CONFLICT, message); }
     private static boolean active(Task t) { return t.status().equals("PLANNED") || t.status().equals("RUNNING"); }
@@ -122,9 +122,14 @@ public class DispatchService {
                 supply.compute(source.id(), (k,n) -> n - quantity); need.compute(destination.id(), (k,n) -> n - quantity);
             }
             if (legs.isEmpty()) throw error("当前没有可执行的调度任务：供需已平衡或没有富余车辆");
-            List<RouteOptimizer.Route> routes = freeVehicles.size() == 2 ? RouteOptimizer.plan(matrix.km(), legs) : null;
+            int[] latest = new int[legs.size()];
+            for (int i = 0; i < legs.size(); i++) latest[i] = slaMinutes(region(legs.get(i).destination()).kind());
+            List<RouteOptimizer.Route> routes = freeVehicles.size() == 2
+                    ? RouteOptimizer.plan(matrix.km(), legs) : null;
             boolean optimized = routes != null;
             if (routes == null) routes = serialRoutes(legs, freeVehicles);
+            routes = applyDeadlines(routes, latest, matrix);
+            if (routes.stream().allMatch(route -> route.stops().isEmpty())) throw error("所有候选搬运都赶不上送达时限，请放宽时限或调整库存");
             for (RouteOptimizer.Route route : routes) {
                 if (route.stops().isEmpty()) continue;
                 String tripId = "TRIP-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
@@ -143,12 +148,13 @@ public class DispatchService {
                     int duration = matrix.minutes() == null
                             ? DemandModel.duration(distance, leg.quantity())
                             : Math.max(5, matrix.minutes()[leg.source()][leg.destination()] + (int) Math.ceil(leg.quantity() * 0.25) + 2);
-                    String reason = "第 %d 单：目的区域缺口 %d 辆；源区域可调出 %d 辆；%s；第 %d 站取、第 %d 站送"
+                    int deadline = minute() + latest[legIndex];
+                    String reason = "第 %d 单：目的区域缺口 %d 辆；源区域可调出 %d 辆；%s；第 %d 站取、第 %d 站送；最晚 %s 送达"
                             .formatted(i + 1, leg.destinationNeed(), leg.sourceSupply(), optimized ? "OR-Tools 载量耦合" : "就近回退",
-                                    pickupAt.get(legIndex), deliveryAt.get(legIndex));
-                    db.update("INSERT INTO dispatch_tasks(id,source_id,destination_id,quantity,vehicle,status,distance,duration,created_minute,reason,trip_id,sequence_no,pickup_seq,delivery_seq) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                    pickupAt.get(legIndex), deliveryAt.get(legIndex), clock(deadline));
+                    db.update("INSERT INTO dispatch_tasks(id,source_id,destination_id,quantity,vehicle,status,distance,duration,created_minute,reason,trip_id,sequence_no,pickup_seq,delivery_seq,deadline_minute) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                             "JD-" + UUID.randomUUID().toString().substring(0,8).toUpperCase(), leg.source(), leg.destination(), leg.quantity(), route.vehicle(), "PLANNED",
-                            distance, duration, minute(), reason, tripId, i + 1, pickupAt.get(legIndex), deliveryAt.get(legIndex));
+                            distance, duration, minute(), reason, tripId, i + 1, pickupAt.get(legIndex), deliveryAt.get(legIndex), deadline);
                 }
             }
             return snapshot();
@@ -299,6 +305,43 @@ public class DispatchService {
         if (tasks().stream().noneMatch(t -> tripId.equals(t.tripId()) && active(t))) {
             db.update("UPDATE dispatch_trips SET status='COMPLETED' WHERE id=?", tripId);
         }
+    }
+
+    private static int slaMinutes(String kind) {
+        return switch (kind) {
+            case "metro" -> 45;
+            case "gate" -> 60;
+            default -> 75;
+        };
+    }
+
+    private List<RouteOptimizer.Route> applyDeadlines(List<RouteOptimizer.Route> routes, int[] latest, MatrixData matrix) {
+        List<RouteOptimizer.Route> kept = new ArrayList<>();
+        for (RouteOptimizer.Route route : routes) {
+            List<RouteOptimizer.Stop> stops = new ArrayList<>(route.stops());
+            boolean changed = true;
+            while (changed && !stops.isEmpty()) {
+                changed = false;
+                int time = 0, previous = -1;
+                for (RouteOptimizer.Stop stop : stops) {
+                    if (previous >= 0) time += travelMinutes(matrix, previous, stop.region());
+                    previous = stop.region();
+                    time += serviceMinutes(Math.abs(stop.quantity()));
+                    if (!stop.pickup() && time > latest[stop.legIndex()]) {
+                        int leg = stop.legIndex();
+                        stops.removeIf(candidate -> candidate.legIndex() == leg);
+                        changed = true;
+                        break;
+                    }
+                }
+            }
+            if (!stops.isEmpty()) kept.add(new RouteOptimizer.Route(route.vehicle(), stops));
+        }
+        return kept;
+    }
+
+    private static String clock(int minute) {
+        return "%02d:%02d".formatted((minute / 60) % 24, minute % 60);
     }
 
     private int serviceMinutes(int quantity) {

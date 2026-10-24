@@ -11,7 +11,7 @@ public final class Models {
                              int shortage, int surplus, String status, int reservedOut, int reservedIn) {}
     public record Task(String id, int sourceId, int destinationId, int quantity, int vehicle, String status,
                        double distance, int duration, int createdMinute, Integer startedMinute, Integer completedMinute,
-                       String reason, String tripId, int sequence, Integer pickupSeq, Integer deliverySeq) {}
+                       String reason, String tripId, int sequence, Integer pickupSeq, Integer deliverySeq, Integer deadlineMinute) {}
     public record Snapshot(List<RegionView> regions, List<Task> tasks, int minute, String scenario,
                            int totalBikes, int groundBikes, int transitBikes, int completedTasks, double totalDistance,
                            String distanceModel) {}

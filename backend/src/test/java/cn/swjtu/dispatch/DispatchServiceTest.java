@@ -105,6 +105,8 @@ class DispatchServiceTest {
             assertFalse(t.reason().isBlank());
             assertTrue(t.reason().contains("缺口"));
             assertTrue(t.reason().contains("第 " + t.sequence() + " 单"));
+            assertNotNull(t.deadlineMinute());
+            assertTrue(t.reason().contains("最晚"));
         }
         assertEquals(s.tasks().size(), service.snapshot().tasks().stream().filter(t -> t.reason() != null).count());
     }

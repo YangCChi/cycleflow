@@ -27,3 +27,4 @@ CREATE TABLE IF NOT EXISTS dispatch_trips (
 );
 ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS pickup_seq INT;
 ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS delivery_seq INT;
+ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS deadline_minute INT;
