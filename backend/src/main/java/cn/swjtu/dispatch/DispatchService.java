@@ -96,39 +96,57 @@ public class DispatchService {
             Snapshot snapshot = snapshot();
             List<Region> all = regions();
             MatrixData matrix = matrixData(all);
+            List<Integer> freeVehicles = new ArrayList<>();
+            for (int vehicle = 1; vehicle <= 2; vehicle++) {
+                final int v = vehicle;
+                if (snapshot.tasks().stream().noneMatch(t -> t.vehicle() == v && active(t))) freeVehicles.add(vehicle);
+            }
+            if (freeVehicles.isEmpty()) throw error("运输车已有待执行或在途任务，请先完成当前任务");
             Map<Integer,Integer> supply = new HashMap<>(), need = new HashMap<>();
             for (RegionView r : snapshot.regions()) {
                 supply.put(r.id(), Math.max(0, r.stock() - r.reservedOut() - r.target()));
                 need.put(r.id(), Math.min(r.shortage(), r.capacity() - r.stock() - r.reservedIn()));
             }
-            boolean generated = false;
-            for (int vehicle = 1; vehicle <= 2; vehicle++) {
-                final int v = vehicle;
-                if (snapshot.tasks().stream().anyMatch(t -> t.vehicle() == v && active(t))) continue;
+            List<RouteOptimizer.Leg> legs = new ArrayList<>();
+            while (legs.size() < 2 * freeVehicles.size()) {
+                Region destination = all.stream().filter(r -> need.get(r.id()) > 0)
+                        .max(Comparator.comparingInt(r -> need.get(r.id()))).orElse(null);
+                if (destination == null) break;
+                Region source = all.stream().filter(r -> supply.get(r.id()) > 0 && r.id() != destination.id())
+                        .min(Comparator.comparingDouble(r -> matrix.km()[r.id()][destination.id()])).orElse(null);
+                if (source == null) break;
+                int destinationNeed = need.get(destination.id()), sourceSupply = supply.get(source.id());
+                int quantity = Math.min(20, Math.min(destinationNeed, sourceSupply));
+                legs.add(new RouteOptimizer.Leg(source.id(), destination.id(), quantity, destinationNeed, sourceSupply));
+                supply.compute(source.id(), (k,n) -> n - quantity); need.compute(destination.id(), (k,n) -> n - quantity);
+            }
+            if (legs.isEmpty()) throw error("当前没有可执行的调度任务：供需已平衡或没有富余车辆");
+            List<List<RouteOptimizer.Leg>> routes = freeVehicles.size() == 2 ? RouteOptimizer.plan(matrix.km(), legs) : null;
+            boolean optimized = routes != null;
+            if (routes == null) {
+                routes = new ArrayList<>();
+                for (int i = 0; i < freeVehicles.size(); i++) routes.add(new ArrayList<>());
+                for (int i = 0; i < legs.size(); i++) routes.get(i % freeVehicles.size()).add(legs.get(i));
+            }
+            for (int i = 0; i < freeVehicles.size(); i++) {
+                List<RouteOptimizer.Leg> route = routes.get(i);
+                if (route.isEmpty()) continue;
+                int vehicle = freeVehicles.get(i);
                 String tripId = "TRIP-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
-                Integer position = null;
-                for (int leg = 1; leg <= 2; leg++) {
-                    final Integer from = position;
-                    Region destination = all.stream().filter(r -> need.get(r.id()) > 0 && (from == null || r.id() != from))
-                            .max(Comparator.comparingInt(r -> need.get(r.id()))).orElse(null);
-                    if (destination == null) break;
-                    Region source = all.stream().filter(r -> supply.get(r.id()) > 0 && r.id() != destination.id() && (from == null || r.id() != from))
-                            .min(Comparator.comparingDouble(r -> from == null ? matrix.km()[r.id()][destination.id()]
-                                    : matrix.km()[from][r.id()] + matrix.km()[r.id()][destination.id()])).orElse(null);
-                    if (source == null) break;
-                    int destinationNeed = need.get(destination.id()), sourceSupply = supply.get(source.id());
-                    int quantity = Math.min(20, Math.min(destinationNeed, sourceSupply));
-                    double distance = matrix.km()[source.id()][destination.id()];
+                Integer previous = null;
+                for (int leg = 0; leg < route.size(); leg++) {
+                    RouteOptimizer.Leg move = route.get(leg);
+                    double distance = matrix.km()[move.source()][move.destination()];
                     int duration = matrix.minutes() == null
-                            ? DemandModel.duration(distance, quantity)
-                            : Math.max(5, matrix.minutes()[source.id()][destination.id()] + (int) Math.ceil(quantity * 0.25) + 2);
-                    String reason = "第 %d 站：目的区域缺口 %d 辆；源区域可调出 %d 辆；多点行程顺路匹配".formatted(leg, destinationNeed, sourceSupply);
-                    db.update("INSERT INTO dispatch_tasks(id,source_id,destination_id,quantity,vehicle,status,distance,duration,created_minute,reason,trip_id,sequence_no) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", "JD-" + UUID.randomUUID().toString().substring(0,8).toUpperCase(), source.id(), destination.id(), quantity, vehicle, "PLANNED", distance, duration, minute(), reason, tripId, leg);
-                    supply.compute(source.id(), (k,n) -> n - quantity); need.compute(destination.id(), (k,n) -> n - quantity);
-                    position = destination.id(); generated = true;
+                            ? DemandModel.duration(distance, move.quantity())
+                            : Math.max(5, matrix.minutes()[move.source()][move.destination()] + (int) Math.ceil(move.quantity() * 0.25) + 2);
+                    String deadhead = previous == null ? "" : "；空驶 %.1f km".formatted(matrix.km()[previous][move.source()]);
+                    String reason = "第 %d 站：目的区域缺口 %d 辆；源区域可调出 %d 辆；%s%s"
+                            .formatted(leg + 1, move.destinationNeed(), move.sourceSupply(), optimized ? "OR-Tools 排序" : "就近回退", deadhead);
+                    db.update("INSERT INTO dispatch_tasks(id,source_id,destination_id,quantity,vehicle,status,distance,duration,created_minute,reason,trip_id,sequence_no) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", "JD-" + UUID.randomUUID().toString().substring(0,8).toUpperCase(), move.source(), move.destination(), move.quantity(), vehicle, "PLANNED", distance, duration, minute(), reason, tripId, leg + 1);
+                    previous = move.destination();
                 }
             }
-            if (!generated) throw error(snapshot.tasks().stream().anyMatch(DispatchService::active) ? "运输车已有待执行或在途任务，请先完成当前任务" : "当前没有可执行的调度任务：供需已平衡或没有富余车辆");
             return snapshot();
         });
     }

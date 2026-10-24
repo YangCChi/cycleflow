@@ -43,10 +43,11 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.action(t.id(), "start"));
         assertThrows(ResponseStatusException.class, () -> service.action(t.id(), "cancel"));
         Snapshot completed = started;
+        for (int i = 0; i < 60 && !status(t.id()).equals("COMPLETED"); i++) completed = service.advance();
+        assertEquals("COMPLETED", status(t.id()));
+        assertEquals(initialDestination + t.quantity(), completed.regions().stream().filter(r -> r.id() == t.destinationId()).findFirst().orElseThrow().stock());
         for (int i = 0; i < 60 && completed.tasks().stream().anyMatch(task -> task.status().equals("RUNNING")); i++) completed = service.advance();
         assertEquals(0, completed.transitBikes()); assertEquals(500, completed.totalBikes());
-        assertEquals("COMPLETED", completed.tasks().stream().filter(task -> task.id().equals(t.id())).findFirst().orElseThrow().status());
-        assertEquals(initialDestination + t.quantity(), completed.regions().stream().filter(r -> r.id() == t.destinationId()).findFirst().orElseThrow().stock());
     }
     @Test void incomingReservationsPreventCapacityReduction() {
         Task t = service.generate().tasks().getFirst();
@@ -136,6 +137,21 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.reset("unknown"));
         assertEquals(before, service.snapshot());
     }
+    @Test void orToolsPlannerServesEveryLegWithinTwoStops() {
+        double[][] km = new double[13][13];
+        for (int from = 1; from <= 12; from++) for (int to = 1; to <= 12; to++) if (from != to) km[from][to] = Math.abs(from - to);
+        List<RouteOptimizer.Leg> legs = List.of(
+                new RouteOptimizer.Leg(1, 12, 10, 10, 10),
+                new RouteOptimizer.Leg(2, 11, 10, 10, 10),
+                new RouteOptimizer.Leg(3, 10, 10, 10, 10),
+                new RouteOptimizer.Leg(4, 9, 10, 10, 10));
+        List<List<RouteOptimizer.Leg>> routes = RouteOptimizer.plan(km, legs);
+        assertNotNull(routes, "OR-Tools planner should be available");
+        assertEquals(2, routes.size());
+        assertEquals(4, routes.stream().mapToInt(List::size).sum());
+        assertTrue(routes.stream().allMatch(route -> route.size() <= 2));
+    }
+
     @Test void multiStopTripRunsLegByLeg() {
         Snapshot s = service.generate();
         Map<String, List<Task>> trips = new TreeMap<>();
