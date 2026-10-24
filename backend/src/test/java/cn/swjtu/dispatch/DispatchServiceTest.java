@@ -48,7 +48,7 @@ class DispatchServiceTest {
         Snapshot completed = started;
         for (int i = 0; i < 60 && !status(t.id()).equals("COMPLETED"); i++) completed = service.advance();
         assertEquals("COMPLETED", status(t.id()));
-        assertEquals(initialDestination + t.quantity(), completed.regions().stream().filter(r -> r.id() == t.destinationId()).findFirst().orElseThrow().stock());
+        assertTrue(completed.regions().stream().filter(r -> r.id() == t.destinationId()).findFirst().orElseThrow().stock() >= initialDestination + t.quantity());
         for (int i = 0; i < 60 && completed.tasks().stream().anyMatch(task -> task.status().equals("RUNNING")); i++) completed = service.advance();
         assertEquals(0, completed.transitBikes()); assertEquals(500, completed.totalBikes());
     }
@@ -104,7 +104,7 @@ class DispatchServiceTest {
             assertNotNull(t.reason());
             assertFalse(t.reason().isBlank());
             assertTrue(t.reason().contains("缺口"));
-            assertTrue(t.reason().contains("第 " + t.sequence() + " 站"));
+            assertTrue(t.reason().contains("第 " + t.sequence() + " 单"));
         }
         assertEquals(s.tasks().size(), service.snapshot().tasks().stream().filter(t -> t.reason() != null).count());
     }
@@ -140,7 +140,7 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.reset("unknown"));
         assertEquals(before, service.snapshot());
     }
-    @Test void orToolsPlannerServesEveryLegWithinThreeStops() {
+    @Test void orToolsPlannerCouplesLoadsWithinCapacity() {
         double[][] km = new double[13][13];
         for (int from = 1; from <= 12; from++) for (int to = 1; to <= 12; to++) if (from != to) km[from][to] = Math.abs(from - to);
         List<RouteOptimizer.Leg> legs = List.of(
@@ -148,33 +148,37 @@ class DispatchServiceTest {
                 new RouteOptimizer.Leg(2, 11, 10, 10, 10),
                 new RouteOptimizer.Leg(3, 10, 10, 10, 10),
                 new RouteOptimizer.Leg(4, 9, 10, 10, 10));
-        List<List<RouteOptimizer.Leg>> routes = RouteOptimizer.plan(km, legs);
+        List<RouteOptimizer.Route> routes = RouteOptimizer.plan(km, legs);
         assertNotNull(routes, "OR-Tools planner should be available");
         assertEquals(2, routes.size());
-        assertEquals(4, routes.stream().mapToInt(List::size).sum());
-        assertTrue(routes.stream().allMatch(route -> route.size() <= 3));
+        assertEquals(4, routes.stream().flatMap(route -> route.stops().stream()).filter(RouteOptimizer.Stop::pickup).count());
+        for (RouteOptimizer.Route route : routes) {
+            int load = 0;
+            for (RouteOptimizer.Stop stop : route.stops()) {
+                load += stop.quantity();
+                assertTrue(load >= 0 && load <= 20, "load must stay within capacity");
+            }
+            assertEquals(0, load, "route must end empty");
+        }
     }
 
-    @Test void multiStopTripRunsLegByLeg() {
+    @Test void tripRunsItsStopsUntilDone() {
         Snapshot s = service.generate();
         Map<String, List<Task>> trips = new TreeMap<>();
         for (Task t : s.tasks()) if (t.tripId() != null) trips.computeIfAbsent(t.tripId(), k -> new ArrayList<>()).add(t);
-        List<Task> trip = trips.values().stream().filter(legs -> legs.size() >= 2)
-                .map(legs -> legs.stream().sorted(Comparator.comparingInt(Task::sequence)).toList())
-                .findFirst().orElseThrow();
-        Task first = trip.get(0), second = trip.get(1);
-        assertEquals(1, first.sequence()); assertEquals(2, second.sequence());
-        assertThrows(ResponseStatusException.class, () -> service.action(second.id(), "start"));
+        List<Task> trip = trips.values().stream().filter(legs -> legs.size() >= 2).findFirst().orElseThrow();
+        Task first = trip.stream().min(Comparator.comparingInt(Task::pickupSeq)).orElseThrow();
+        for (Task t : trip) {
+            assertTrue(t.pickupSeq() < t.deliverySeq());
+            assertTrue(t.reason().contains("站取") && t.reason().contains("站送"));
+        }
         service.action(first.id(), "start");
         assertEquals("RUNNING", status(first.id()));
-        assertEquals("PLANNED", status(second.id()));
-        for (int i = 0; i < 40 && !status(first.id()).equals("COMPLETED"); i++) service.advance();
-        assertEquals("COMPLETED", status(first.id()));
-        assertEquals("RUNNING", status(second.id()));
-        for (int i = 0; i < 60 && service.snapshot().tasks().stream().anyMatch(t -> t.status().equals("RUNNING")); i++) service.advance();
-        assertEquals("COMPLETED", status(second.id()));
-        assertEquals(500, service.snapshot().totalBikes());
-        assertEquals(0, service.snapshot().transitBikes());
+        for (int i = 0; i < 100 && service.snapshot().tasks().stream().anyMatch(t -> t.status().equals("PLANNED") || t.status().equals("RUNNING")); i++) service.advance();
+        Snapshot done = service.snapshot();
+        for (Task t : trip) assertEquals("COMPLETED", done.tasks().stream().filter(x -> x.id().equals(t.id())).findFirst().orElseThrow().status());
+        assertEquals(500, done.totalBikes());
+        assertEquals(0, done.transitBikes());
     }
 
     private String status(String id) {

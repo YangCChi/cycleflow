@@ -12,59 +12,79 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Assigns selected pickup-delivery legs to the two trucks and orders each route.
- * The objective is loaded distance plus the empty run between a delivery and the next pickup.
+ * Plans two-truck pickup-and-delivery routes. A truck may pick up several loads
+ * before delivering them as long as the 20-bike capacity holds.
  */
 public final class RouteOptimizer {
     private RouteOptimizer() {}
 
     public record Leg(int source, int destination, int quantity, int destinationNeed, int sourceSupply) {}
+    public record Stop(int legIndex, boolean pickup, int region, int quantity) {}
+    public record Route(int vehicle, List<Stop> stops) {}
 
-    private static Boolean available;
+    private static final int VEHICLES = 2;
+    private static final int CAPACITY = 20;
+    private static final int MAX_STOPS = 6;
 
-    /** Returns one ordered route per vehicle, or null when OR-Tools is unavailable. */
-    public static List<List<Leg>> plan(double[][] km, List<Leg> legs) {
-        if (legs.isEmpty()) return List.of(List.of(), List.of());
+    /** Returns two routes, or null when the solver is unavailable or cannot serve every leg. */
+    public static List<Route> plan(double[][] km, List<Leg> legs) {
+        if (legs.isEmpty()) return List.of(new Route(1, List.of()), new Route(2, List.of()));
         if (!loaded()) return null;
         try {
             int n = legs.size();
-            int nodes = n + 1;
-            int vehicles = 2;
-            double[][] cost = new double[nodes][nodes];
-            for (int i = 1; i < nodes; i++) {
-                Leg to = legs.get(i - 1);
-                for (int j = 1; j < nodes; j++) {
-                    Leg from = legs.get(j - 1);
-                    cost[i][j] = km[from.destination()][to.source()] + km[to.source()][to.destination()];
-                }
+            int nodes = 1 + 2 * n;
+            int[] demand = new int[nodes];
+            int[] region = new int[nodes];
+            for (int i = 0; i < n; i++) {
+                Leg leg = legs.get(i);
+                int pickup = 1 + 2 * i, delivery = pickup + 1;
+                demand[pickup] = leg.quantity();
+                demand[delivery] = -leg.quantity();
+                region[pickup] = leg.source();
+                region[delivery] = leg.destination();
             }
-            RoutingIndexManager manager = new RoutingIndexManager(nodes, vehicles, 0);
+            RoutingIndexManager manager = new RoutingIndexManager(nodes, VEHICLES, 0);
             RoutingModel routing = new RoutingModel(manager);
-            int transit = routing.registerTransitCallback((from, to) ->
-                    Math.round(cost[manager.indexToNode(from)][manager.indexToNode(to)] * 1000));
+            int transit = routing.registerTransitCallback((from, to) -> {
+                int a = manager.indexToNode(from), b = manager.indexToNode(to);
+                if (a == 0 || b == 0) return 0;
+                return Math.round(km[region[a]][region[b]] * 1000);
+            });
             routing.setArcCostEvaluatorOfAllVehicles(transit);
+            int loads = routing.registerUnaryTransitCallback(from -> demand[manager.indexToNode(from)]);
+            routing.addDimensionWithVehicleCapacity(loads, 0, new long[]{CAPACITY, CAPACITY}, false, "Load");
             int stops = routing.registerUnaryTransitCallback(from -> manager.indexToNode(from) == 0 ? 0 : 1);
-            routing.addDimensionWithVehicleCapacity(stops, 0, new long[]{3, 3}, true, "Stops");
+            routing.addDimensionWithVehicleCapacity(stops, 0, new long[]{MAX_STOPS, MAX_STOPS}, true, "Stops");
+            for (int i = 0; i < n; i++) {
+                int pickup = 1 + 2 * i, delivery = pickup + 1;
+                routing.addPickupAndDelivery(manager.nodeToIndex(pickup), manager.nodeToIndex(delivery));
+            }
             RoutingSearchParameters parameters = main.defaultRoutingSearchParameters()
                     .toBuilder()
                     .setFirstSolutionStrategy(FirstSolutionStrategy.Value.PATH_CHEAPEST_ARC)
                     .setLocalSearchMetaheuristic(LocalSearchMetaheuristic.Value.GUIDED_LOCAL_SEARCH)
-                    .setTimeLimit(com.google.protobuf.Duration.newBuilder().setNanos(250_000_000).build())
+                    .setTimeLimit(com.google.protobuf.Duration.newBuilder().setNanos(300_000_000).build())
                     .build();
             Assignment solution = routing.solveWithParameters(parameters);
             if (solution == null) return null;
-            List<List<Leg>> routes = new ArrayList<>();
-            for (int vehicle = 0; vehicle < vehicles; vehicle++) {
-                List<Leg> route = new ArrayList<>();
+            List<Route> routes = new ArrayList<>();
+            int served = 0;
+            for (int vehicle = 0; vehicle < VEHICLES; vehicle++) {
+                List<Stop> route = new ArrayList<>();
                 long index = routing.start(vehicle);
                 while (!routing.isEnd(index)) {
                     int node = manager.indexToNode(index);
-                    if (node > 0) route.add(legs.get(node - 1));
+                    if (node > 0) {
+                        int legIndex = (node - 1) / 2;
+                        boolean pickup = (node - 1) % 2 == 0;
+                        route.add(new Stop(legIndex, pickup, region[node], demand[node]));
+                        if (pickup) served++;
+                    }
                     index = solution.value(routing.nextVar(index));
                 }
-                routes.add(route);
+                routes.add(new Route(vehicle + 1, route));
             }
-            return routes.stream().mapToInt(List::size).sum() == n ? routes : null;
+            return served == n ? routes : null;
         } catch (Throwable failure) {
             return null;
         }
@@ -74,6 +94,8 @@ public final class RouteOptimizer {
     public static void warmUp() {
         loaded();
     }
+
+    private static Boolean available;
 
     private static synchronized boolean loaded() {
         if (available == null) {

@@ -43,6 +43,14 @@ const position = region => [region.latitude, region.longitude]
 const isMapped = region => Number.isFinite(region?.latitude) && Number.isFinite(region?.longitude)
 const tone = region => region.shortage > 0 ? 'shortage' : region.status === 'crowded' ? 'crowded' : 'balanced'
 const toneColor = region => tone(region) === 'shortage' ? '#d9822b' : tone(region) === 'crowded' ? '#7f8fa6' : '#2f9e6b'
+function runningByVehicle() {
+  const byVehicle = new Map()
+  for (const task of props.tasks.filter(item => item.status === 'RUNNING')) {
+    const current = byVehicle.get(task.vehicle)
+    if (!current || (task.startedMinute ?? 0) >= (current.startedMinute ?? 0)) byVehicle.set(task.vehicle, task)
+  }
+  return [...byVehicle.values()]
+}
 const progressOf = task => Math.max(0, Math.min(1, (props.minute - (task.startedMinute ?? props.minute)) / Math.max(1, task.duration)))
 const asPair = point => Array.isArray(point) ? point : [point.getLng ? point.getLng() : point.lng, point.getLat ? point.getLat() : point.lat]
 
@@ -134,7 +142,7 @@ function drawLeafletMarkers() {
 function drawLeafletTrucks() {
   if (!map) return
   leafletTrucks.clearLayers()
-  for (const task of props.tasks.filter(item => item.status === 'RUNNING')) {
+  for (const task of runningByVehicle()) {
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
     if (!isMapped(source) || !isMapped(destination)) continue
@@ -256,7 +264,7 @@ function drawAmapTrucks() {
   if (!amap) return
   if (amapTrucks.length) amap.remove(amapTrucks)
   amapTrucks = []
-  for (const task of props.tasks.filter(item => item.status === 'RUNNING')) {
+  for (const task of runningByVehicle()) {
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
     if (!isMapped(source) || !isMapped(destination)) continue

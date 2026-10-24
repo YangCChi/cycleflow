@@ -20,3 +20,10 @@ CREATE TABLE IF NOT EXISTS road_matrix (
 );
 ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS trip_id VARCHAR(40);
 ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS sequence_no INT DEFAULT 1;
+
+CREATE TABLE IF NOT EXISTS dispatch_trips (
+ id VARCHAR(40) PRIMARY KEY, vehicle INT NOT NULL, status VARCHAR(20) NOT NULL,
+ start_minute INT, created_minute INT NOT NULL
+);
+ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS pickup_seq INT;
+ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS delivery_seq INT;
