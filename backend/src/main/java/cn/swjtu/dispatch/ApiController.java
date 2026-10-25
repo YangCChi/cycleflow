@@ -10,6 +10,9 @@ public class ApiController {
     private final DispatchService service;
     private final RoadMatrix matrix;
     public ApiController(DispatchService service, RoadMatrix matrix) { this.service = service; this.matrix = matrix; }
+    @GetMapping("/health") public Map<String,Object> health() {
+        return Map.of("status", "ok", "planner", RouteOptimizer.available(), "matrix", matrix.status());
+    }
     @GetMapping("/state") public Snapshot state() { return service.snapshot(); }
     @PatchMapping("/regions/{id}") public Snapshot update(@PathVariable int id, @RequestBody RegionUpdate update) { return service.update(id, update); }
     @GetMapping("/regions/{id}/forecast") public List<ForecastPoint> forecast(@PathVariable int id) { return service.forecast(id); }

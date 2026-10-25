@@ -95,6 +95,8 @@ public final class RouteOptimizer {
         loaded();
     }
 
+    public static boolean available() { return Boolean.TRUE.equals(available); }
+
     private static Boolean available;
 
     private static synchronized boolean loaded() {

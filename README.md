@@ -101,7 +101,7 @@ scripts/    启动与校验脚本
 docs/       规划与验收记录
 ```
 
-API：`GET /api/state`、`PATCH /api/regions/{id}`、`GET /api/regions/{id}/forecast`、`POST /api/dispatch/generate`、`POST /api/dispatch/{id}/start`、`POST /api/dispatch/{id}/cancel`、`POST /api/simulation/advance`、`POST /api/simulation/reset`、`GET /api/experiments?seed=42`、`GET /api/experiments/summary?seed=42&runs=5`、`GET /api/road-matrix`、`POST /api/road-matrix/refresh`。
+API：`GET /api/health`、`GET /api/state`、`PATCH /api/regions/{id}`、`GET /api/regions/{id}/forecast`、`POST /api/dispatch/generate`、`POST /api/dispatch/{id}/start`、`POST /api/dispatch/{id}/cancel`、`POST /api/simulation/advance`、`POST /api/simulation/reset`、`GET /api/experiments?seed=42`、`GET /api/experiments/summary?seed=42&runs=5`、`GET /api/road-matrix`、`POST /api/road-matrix/refresh`、`GET /api/dispatch/compare`、`GET /api/dispatch/compare/summary`。
 
 ## 后续方向
 

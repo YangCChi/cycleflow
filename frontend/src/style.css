@@ -584,3 +584,28 @@ td{padding:18px 20px;font-size:13px}
 .task-card.is-focused{background:#f7faf9}
 .task-card{cursor:pointer}
 .task-card.is-focused{background:#f4faf7;box-shadow:inset 3px 0 0 var(--accent);border-radius:12px}
+
+/* mobile: keep the shipment list single-column and readable */
+@media(max-width:1080px){
+  .task-list{display:flex;flex-direction:column;gap:0}
+  .task-card{width:auto}
+}
+@media(max-width:700px){
+  .task-list{padding:0 16px}
+  .task-card{padding:18px 4px}
+  .task-header{font-size:11px}
+  .task-route{margin-top:12px}
+  .task-route>div:nth-child(2)>strong{font-size:14px;white-space:normal}
+  .task-meta{flex-wrap:wrap;gap:6px 12px}
+  .task-quantity{font-size:22px}
+  .task-actions{flex-wrap:wrap}
+  .list-row{flex-wrap:wrap;gap:10px}
+  .row-main{flex-basis:calc(100% - 52px)}
+  .row-side{margin-left:52px}
+  .map-overlay-title{top:12px;left:12px;padding:10px 13px}
+  .map-overlay-title h2{font-size:14px}
+  .map-overlay-action{top:12px;right:12px;padding:7px 12px}
+  .map-overlay-foot{left:12px;bottom:30px}
+}
+.dispatch-layout>*, .task-list, .task-card{min-width:0}
+@media(max-width:700px){.task-header{flex-wrap:wrap}.task-header .task-status{margin-left:auto}}
