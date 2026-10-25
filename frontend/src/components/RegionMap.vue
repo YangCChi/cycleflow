@@ -401,27 +401,30 @@ function scheduleAmapFit() {
   fitTimer = window.setTimeout(() => fitAmapArea(), 350)
 }
 
+function fitZoomFor(points, width, height, padding) {
+  let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity
+  for (const point of points) {
+    minLng = Math.min(minLng, point[0]); maxLng = Math.max(maxLng, point[0])
+    minLat = Math.min(minLat, point[1]); maxLat = Math.max(maxLat, point[1])
+  }
+  const midLng = (minLng + maxLng) / 2, midLat = (minLat + maxLat) / 2
+  const lngSpan = Math.max(maxLng - minLng, 1e-6), latSpan = Math.max(maxLat - minLat, 1e-6)
+  const zoomLng = Math.log2(((width - padding * 2) * 360) / (256 * lngSpan))
+  const metersPerPixel = 156543.03392 * Math.cos(midLat * Math.PI / 180)
+  const zoomLat = Math.log2(((height - padding * 2) * metersPerPixel) / (latSpan * 111320))
+  const zoom = Math.max(13, Math.min(16, Math.floor(Math.min(zoomLng, zoomLat))))
+  return { zoom, center: [midLng, midLat] }
+}
+
 function fitAmapArea() {
   if (!amap) return
   if (amapMarkers.length) {
-    let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity
-    for (const marker of amapMarkers) {
+    const points = amapMarkers.map(marker => {
       const point = marker.getPosition()
-      const lng = point.getLng ? point.getLng() : point.lng
-      const lat = point.getLat ? point.getLat() : point.lat
-      minLng = Math.min(minLng, lng); maxLng = Math.max(maxLng, lng)
-      minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat)
-    }
-    const width = container.value?.clientWidth || 640
-    const height = container.value?.clientHeight || 480
-    const padding = 70
-    const midLng = (minLng + maxLng) / 2, midLat = (minLat + maxLat) / 2
-    const lngSpan = Math.max(maxLng - minLng, 1e-6), latSpan = Math.max(maxLat - minLat, 1e-6)
-    const zoomLng = Math.log2(((width - padding * 2) * 360) / (256 * lngSpan))
-    const metersPerPixel = 156543.03392 * Math.cos(midLat * Math.PI / 180)
-    const zoomLat = Math.log2(((height - padding * 2) * metersPerPixel) / (latSpan * 111320))
-    const zoom = Math.max(13, Math.min(16, Math.min(zoomLng, zoomLat)))
-    amap.setZoomAndCenter(Math.max(13, Math.min(16, Math.floor(zoom))), [midLng, midLat])
+      return [point.getLng ? point.getLng() : point.lng, point.getLat ? point.getLat() : point.lat]
+    })
+    const { zoom, center } = fitZoomFor(points, container.value?.clientWidth || 640, container.value?.clientHeight || 480, 70)
+    amap.setZoomAndCenter(zoom, center)
     fitted = true
   } else {
     const [lng, lat] = wgs84ToGcj02(campus[1], campus[0])
@@ -487,13 +490,18 @@ watch(() => props.focusTask, id => {
     const task = props.tasks.find(item => item.id === id)
     const source = task && props.regions.find(region => region.id === task.sourceId)
     const destination = task && props.regions.find(region => region.id === task.destinationId)
-    if (source && destination) amap?.panTo(along([gcjPosition(source), gcjPosition(destination)], .5))
+    if (source && destination) {
+      const cached = routePaths.get(id)
+      const points = cached && cached.length ? cached.map(asPair) : [gcjPosition(source), gcjPosition(destination)]
+      const { zoom, center } = fitZoomFor(points, container.value?.clientWidth || 640, container.value?.clientHeight || 480, 80)
+      amap?.setZoomAndCenter(Math.max(zoom, 14), center, false, 600)
+    }
   } else if (map) {
     drawLeafletMarkers(); drawLeafletRoutes()
     const task = props.tasks.find(item => item.id === id)
     const source = task && props.regions.find(region => region.id === task.sourceId)
     const destination = task && props.regions.find(region => region.id === task.destinationId)
-    if (source && destination) map.panTo(along([position(source), position(destination)], .5))
+    if (source && destination) map.flyToBounds(L.latLngBounds([position(source), position(destination)]), { padding: [70, 70], maxZoom: 16, duration: .7 })
   }
 })
 watch(() => props.minute, () => {

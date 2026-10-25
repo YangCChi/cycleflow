@@ -653,3 +653,5 @@ td{padding:18px 20px;font-size:13px}
 .station-marker:hover{transform:translateY(-2px)}
 .station-marker.selected{animation:pin-pulse 2.2s ease-in-out infinite}
 .truck-marker svg{animation:truck-bob 2.4s ease-in-out infinite}
+.task-header .task-id{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-header .task-status{flex-shrink:0;white-space:nowrap}
