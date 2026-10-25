@@ -21,6 +21,8 @@ let leafletMarkers
 let leafletRoutes
 let leafletTrucks
 let amapTrucks = []
+let amapTraveled = []
+let leafletTraveled
 let fitted = false
 let fitTimer
 let amapMarkers = []
@@ -73,6 +75,28 @@ function along(points, ratio) {
     target -= lengths[i]
   }
   return points[points.length - 1]
+}
+
+function slicePath(points, ratio) {
+  if (!points.length) return [[], []]
+  const lengths = []
+  let total = 0
+  for (let i = 1; i < points.length; i++) {
+    const length = Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1])
+    lengths.push(length); total += length
+  }
+  let target = total * Math.max(0, Math.min(1, ratio))
+  const traveled = [points[0]]
+  for (let i = 0; i < lengths.length; i++) {
+    if (target >= lengths[i]) { traveled.push(points[i + 1]); target -= lengths[i] }
+    else {
+      const r = lengths[i] ? target / lengths[i] : 0
+      const point = [points[i][0] + (points[i + 1][0] - points[i][0]) * r, points[i][1] + (points[i + 1][1] - points[i][1]) * r]
+      traveled.push(point)
+      return [traveled, [point, ...points.slice(i + 1)]]
+    }
+  }
+  return [traveled, [points[points.length - 1]]]
 }
 
 function stationSvg(region, active) {
@@ -144,11 +168,13 @@ function drawLeafletMarkers() {
 function drawLeafletTrucks() {
   if (!map) return
   leafletTrucks.clearLayers()
+  leafletTraveled.clearLayers()
   for (const task of runningByVehicle()) {
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
     if (!isMapped(source) || !isMapped(destination)) continue
     const point = along([position(source), position(destination)], progressOf(task))
+    L.polyline([position(source), point], { color: '#0a7c5a', weight: 5, opacity: 1, className: 'demo-map-route' }).addTo(leafletTraveled)
     L.marker(point, {
       icon: L.divIcon({ className: 'truck-marker', html: truckSvg(), iconSize: [38, 38], iconAnchor: [19, 19] }),
       interactive: false, keyboard: false, zIndexOffset: 500
@@ -163,8 +189,11 @@ function drawLeafletRoutes() {
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
     if (!isMapped(source) || !isMapped(destination)) continue
+    const emphasized = props.selected === task.sourceId || props.selected === task.destinationId
     L.polyline([position(source), position(destination)], {
-      color: '#078763', weight: 4, opacity: .9, dashArray: '9 7',
+      color: '#078763', weight: emphasized ? 6 : 4,
+      opacity: task.status === 'RUNNING' ? .22 : (emphasized ? .9 : .45),
+      dashArray: task.status === 'PLANNED' ? '9 7' : undefined,
       className: task.status === 'RUNNING' ? 'demo-map-route running' : 'demo-map-route'
     }).bindTooltip('调度任务示意连线，非实际道路路线').addTo(leafletRoutes)
   }
@@ -206,6 +235,7 @@ function initLeaflet() {
   leafletRoutes = L.layerGroup().addTo(map)
   leafletMarkers = L.layerGroup().addTo(map)
   leafletTrucks = L.layerGroup().addTo(map)
+  leafletTraveled = L.layerGroup().addTo(map)
   drawLeafletRoutes()
   drawLeafletMarkers()
   drawLeafletTrucks()
@@ -251,12 +281,21 @@ function drawAmapRoutes() {
     if (!isMapped(source) || !isMapped(destination)) continue
     const cached = routePaths.get(task.id)
     const path = cached || [gcjPosition(source), gcjPosition(destination)]
+    const emphasized = props.selected === task.sourceId || props.selected === task.destinationId
+    const running = task.status === 'RUNNING'
     if (cached) {
       amapRoutes.push(new window.AMap.Polyline({ path, strokeColor: '#ffffff', strokeWeight: 9, strokeOpacity: .95, strokeStyle: 'solid', zIndex: 58 }))
-      amapRoutes.push(new window.AMap.Polyline({ path, strokeColor: '#078763', strokeWeight: 5, strokeOpacity: 1, strokeStyle: 'solid', showDir: true, zIndex: 60 }))
-    } else {
-      amapRoutes.push(new window.AMap.Polyline({ path, strokeColor: '#078763', strokeWeight: 4, strokeOpacity: .9, strokeStyle: 'dashed', strokeDasharray: [9, 7], zIndex: 60 }))
     }
+    amapRoutes.push(new window.AMap.Polyline({
+      path,
+      strokeColor: '#078763',
+      strokeWeight: emphasized ? 6 : 4,
+      strokeOpacity: running ? .22 : (emphasized ? .9 : .45),
+      strokeStyle: task.status === 'PLANNED' ? 'dashed' : 'solid',
+      strokeDasharray: task.status === 'PLANNED' ? [9, 7] : undefined,
+      showDir: !running && emphasized,
+      zIndex: 60
+    }))
     if (!cached) planAmapRoute(task, source, destination)
   }
   if (amapRoutes.length) amap.add(amapRoutes)
@@ -265,7 +304,9 @@ function drawAmapRoutes() {
 function drawAmapTrucks() {
   if (!amap) return
   if (amapTrucks.length) amap.remove(amapTrucks)
+  if (amapTraveled.length) amap.remove(amapTraveled)
   amapTrucks = []
+  amapTraveled = []
   for (const task of runningByVehicle()) {
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
@@ -274,6 +315,12 @@ function drawAmapTrucks() {
     const points = cached && cached.length
       ? cached.map(asPair)
       : [gcjPosition(source), gcjPosition(destination)]
+    const [traveled] = slicePath(points, progressOf(task))
+    if (traveled.length > 1) {
+      amapTraveled.push(new window.AMap.Polyline({
+        path: traveled, strokeColor: '#0a7c5a', strokeWeight: 5, strokeOpacity: 1, strokeStyle: 'solid', zIndex: 132
+      }))
+    }
     const element = document.createElement('div')
     element.className = 'truck-marker'
     element.innerHTML = truckSvg()
@@ -285,6 +332,7 @@ function drawAmapTrucks() {
       bubble: true
     }))
   }
+  if (amapTraveled.length) amap.add(amapTraveled)
   if (amapTrucks.length) amap.add(amapTrucks)
 }
 
