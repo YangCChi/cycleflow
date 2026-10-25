@@ -21,6 +21,7 @@ let leafletMarkers
 let leafletRoutes
 let leafletTrucks
 let amapTrucks = []
+let fitted = false
 let amapMarkers = []
 let amapRoutes = []
 let tileLayer
@@ -171,7 +172,7 @@ function drawLeafletRoutes() {
 function fitLeafletArea() {
   if (!map) return
   const points = props.regions.filter(isMapped).map(position)
-  if (points.length) map.fitBounds(L.latLngBounds(points), { padding: [45, 45], maxZoom: 15, animate: false })
+  if (points.length) { map.fitBounds(L.latLngBounds(points), { padding: [45, 45], maxZoom: 15, animate: false }); fitted = true }
   else map.setView(campus, 14)
 }
 
@@ -319,7 +320,11 @@ function drawAmap(fit) {
 
 function fitAmapArea() {
   if (!amap) return
-  if (amapMarkers.length) amap.setFitView(amapMarkers, false, [45, 45, 45, 45], 15)
+  if (amapMarkers.length) {
+    amap.setFitView(amapMarkers, false, [45, 45, 45, 45], 15)
+    if (amap.getZoom() < 14) amap.setZoomAndCenter(14, amap.getCenter())
+    fitted = true
+  }
   else {
     const [lng, lat] = wgs84ToGcj02(campus[1], campus[0])
     amap.setZoomAndCenter(14, [lng, lat])
@@ -365,8 +370,13 @@ onMounted(async () => {
 })
 
 watch(() => props.regions, () => {
-  if (mapEngine.value === 'amap') drawAmap(false)
-  else if (map) { drawLeafletMarkers(); drawLeafletRoutes() }
+  if (mapEngine.value === 'amap') {
+    drawAmap(false)
+    if (!fitted && amapMarkers.length) fitAmapArea()
+  } else if (map) {
+    drawLeafletMarkers(); drawLeafletRoutes()
+    if (!fitted && props.regions.length) fitLeafletArea()
+  }
 }, { deep: true })
 watch(() => props.tasks, () => {
   if (mapEngine.value === 'amap') { drawAmapRoutes(); drawAmapTrucks() }

@@ -325,13 +325,13 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
                     <line :x1="86 + i * 220" :x2="96 + i * 220" :y1="chartY(row.greedyKmMax)" :y2="chartY(row.greedyKmMax)" stroke="#a1a1a6" stroke-width="1"/>
                     <line :x1="86 + i * 220" :x2="96 + i * 220" :y1="chartY(row.greedyKmMin)" :y2="chartY(row.greedyKmMin)" stroke="#a1a1a6" stroke-width="1"/>
                     <rect :x="70 + i * 220" :y="chartY(row.greedyKm)" width="42" :height="200 - chartY(row.greedyKm)" rx="4" fill="#d2d2d7"/>
-                    <text :x="91 + i * 220" :y="chartY(row.greedyKm) - 7" text-anchor="middle" class="chart-value">{{ row.greedyKm }}</text>
+                    <text :x="91 + i * 220" :y="chartY(row.greedyKmMax) - 7" text-anchor="middle" class="chart-value">{{ row.greedyKm }}</text>
                     <template v-if="row.ortoolsKm != null">
                       <line :x1="141 + i * 220" :x2="141 + i * 220" :y1="chartY(row.ortoolsKmMax)" :y2="chartY(row.ortoolsKmMin)" stroke="#0a7c5a" stroke-width="1"/>
                       <line :x1="136 + i * 220" :x2="146 + i * 220" :y1="chartY(row.ortoolsKmMax)" :y2="chartY(row.ortoolsKmMax)" stroke="#0a7c5a" stroke-width="1"/>
                       <line :x1="136 + i * 220" :x2="146 + i * 220" :y1="chartY(row.ortoolsKmMin)" :y2="chartY(row.ortoolsKmMin)" stroke="#0a7c5a" stroke-width="1"/>
                       <rect :x="120 + i * 220" :y="chartY(row.ortoolsKm)" width="42" :height="200 - chartY(row.ortoolsKm)" rx="4" fill="#0a7c5a"/>
-                      <text :x="141 + i * 220" :y="chartY(row.ortoolsKm) - 7" text-anchor="middle" class="chart-value">{{ row.ortoolsKm }}</text>
+                      <text :x="141 + i * 220" :y="chartY(row.ortoolsKmMax) - 7" text-anchor="middle" class="chart-value">{{ row.ortoolsKm }}</text>
                     </template>
                     <text :x="120 + i * 220" y="236" text-anchor="middle" class="chart-label">{{ scenarioNames[row.scenario] }}</text>
                   </g>
