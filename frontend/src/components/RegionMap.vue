@@ -21,6 +21,8 @@ let leafletRoutes
 let leafletTrucks
 let amapTraveled = []
 const amapTruckState = new Map()
+const flowLines = new Map()
+let flowFrame = 0
 const grownRoutes = new Set()
 let leafletTraveled
 let fitted = false
@@ -331,6 +333,71 @@ function drawAmapRoutes() {
   for (const item of growing) { grownRoutes.add(item.id); animateRoute(item.line, item.points) }
 }
 
+function sliceBetween(points, from, to) {
+  if (points.length < 2) return points
+  const segments = []
+  let total = 0
+  for (let i = 1; i < points.length; i++) {
+    const length = Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1])
+    segments.push(length); total += length
+  }
+  if (!total) return points.slice(0, 1)
+  const out = []
+  let acc = 0
+  for (let i = 0; i < segments.length; i++) {
+    const start = acc / total, end = (acc + segments[i]) / total
+    acc += segments[i]
+    if (end < from || start > to) continue
+    const t0 = Math.max(0, (from - start) / (end - start))
+    const t1 = Math.min(1, (to - start) / (end - start))
+    const a = [points[i][0] + (points[i + 1][0] - points[i][0]) * t0, points[i][1] + (points[i + 1][1] - points[i][1]) * t0]
+    const b = [points[i][0] + (points[i + 1][0] - points[i][0]) * t1, points[i][1] + (points[i + 1][1] - points[i][1]) * t1]
+    if (!out.length) out.push(a)
+    out.push(b)
+  }
+  return out
+}
+
+function flowTick() {
+  if (!amap) { flowFrame = 0; return }
+  const running = runningByVehicle()
+  const seen = new Set()
+  const phase = ((performance.now() % 2600) / 2600) * 0.93
+  for (const task of running) {
+    const source = props.regions.find(region => region.id === task.sourceId)
+    const destination = props.regions.find(region => region.id === task.destinationId)
+    if (!isMapped(source) || !isMapped(destination)) continue
+    seen.add(task.id)
+    const cached = routePaths.get(task.id)
+    const points = cached && cached.length ? cached.map(asPair) : [gcjPosition(source), gcjPosition(destination)]
+    let line = flowLines.get(task.id)
+    if (!line) {
+      line = new window.AMap.Polyline({ path: [], strokeColor: '#ffffff', strokeWeight: 3, strokeOpacity: .75, strokeStyle: 'solid', zIndex: 133 })
+      amap.add(line)
+      flowLines.set(task.id, line)
+    }
+    line.setPath(sliceBetween(points, phase, Math.min(1, phase + 0.07)))
+  }
+  for (const [id, line] of flowLines) {
+    if (seen.has(id)) continue
+    amap.remove(line)
+    flowLines.delete(id)
+  }
+  flowFrame = seen.size ? requestAnimationFrame(flowTick) : 0
+}
+
+function syncFlow() {
+  if (!amap) return
+  if (runningByVehicle().length) {
+    if (!flowFrame) flowFrame = requestAnimationFrame(flowTick)
+  } else {
+    if (flowFrame) cancelAnimationFrame(flowFrame)
+    flowFrame = 0
+    for (const line of flowLines.values()) amap.remove(line)
+    flowLines.clear()
+  }
+}
+
 function animateTruck(entry, target) {
   cancelAnimationFrame(entry.raf)
   const start = entry.point || target
@@ -391,6 +458,7 @@ function drawAmapTrucks() {
     amapTruckState.delete(key)
   }
   if (amapTraveled.length) amap.add(amapTraveled)
+  syncFlow()
 }
 
 function drawAmap(fit) {
@@ -548,6 +616,8 @@ watch(() => props.selected, id => {
   }
 })
 onBeforeUnmount(() => {
+  if (flowFrame) cancelAnimationFrame(flowFrame)
+  flowFrame = 0
   if (mapEngine.value === 'amap') amap?.destroy()
   else map?.remove()
   map = null; amap = null
