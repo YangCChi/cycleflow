@@ -510,3 +510,22 @@ td{padding:18px 20px;font-size:13px}
 .task-header{color:#9aa4b1}
 .task-route{margin-top:14px}
 .task-deadline{margin-top:6px}
+
+/* shared list rows for regions and records */
+.list-rows{padding:6px 24px 10px}
+.list-row{display:flex;align-items:center;gap:14px;padding:15px 2px;border-bottom:1px solid #f0f2f5;cursor:pointer;transition:background .15s}
+.list-row:last-child{border-bottom:0}
+.list-row:hover{background:#fafbfc}
+.list-row.is-selected{background:#f7faf9}
+.row-icon{width:38px;height:38px;border-radius:11px;background:#f4f7f9;color:#6b7785;display:grid;place-items:center;flex-shrink:0}
+.row-main{flex:1;min-width:0}
+.row-main strong{display:block;font-size:14px;font-weight:600;color:#1d1d1f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-main span{display:block;font-size:12px;color:#8a95a3;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-side{display:flex;align-items:center;gap:10px}
+.row-figure{font-size:14px;font-weight:600;color:#1d1d1f}
+.row-figure small{font-size:11px;font-weight:400;color:#9aa4b1}
+.list-row .chev{color:#c7ccd4;transition:transform .2s}
+.list-row .chev.open{transform:rotate(180deg)}
+.empty-table{text-align:center;padding:34px 0;color:#9aa4b1;font-size:12px}
+.record-detail-inline{padding:0 2px 18px 66px;border-bottom:1px solid #f0f2f5;margin-top:-4px;grid-template-columns:repeat(3,minmax(0,1fr))}
+.record-detail-inline .record-reason-cell{grid-column:1/-1}

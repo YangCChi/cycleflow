@@ -22,6 +22,7 @@ const expandedTask = ref(null)
 const forecastDetail = ref(false)
 const experimentSettings = ref(false)
 const planCompare = ref(null), comparing = ref(false)
+const regionListOpen = ref(false)
 const editDialog = ref(null), resetDialog = ref(null), infoDialog = ref(null), demoDialog = ref(null), edit = ref({}), pendingScenario = ref('morning'), formError = ref('')
 const scenarioNames = { morning: '工作日早高峰', evening: '工作日晚高峰', weekend: '周末出行' }
 const typeNames = { gate: '校门接驳', metro: '轨道接驳', residential: '居住区域', commercial: '商业区域' }
@@ -188,7 +189,8 @@ const forecastMax = computed(() => Math.max(20, ...forecast.value.flatMap(p => [
 const plotLine = key => forecast.value.map((p,i) => `${65+i*85},${255-p[key]/forecastMax.value*200}`).join(' ')
 watch([current, selected, () => data.value?.minute, () => data.value?.scenario], () => { if (current.value === 'forecast') loadForecast() })
 watch(current, () => { if (current.value !== 'dispatch' && current.value !== 'overview') playing.value = false })
-onMounted(async () => { window.addEventListener('hashchange', onHash); await load(); if (current.value === 'forecast') loadForecast(); if (new URLSearchParams(location.search).has('compare')) comparePlans(); interval = setInterval(() => { if (playing.value && !busy.value) advance() }, 1400) })
+onMounted(async () => { window.addEventListener('hashchange', onHash); await load(); if (current.value === 'forecast') loadForecast(); if (new URLSearchParams(location.search).has('compare')) comparePlans();
+  if (new URLSearchParams(location.search).has('open')) regionListOpen.value = true; interval = setInterval(() => { if (playing.value && !busy.value) advance() }, 1400) })
 onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.removeEventListener('hashchange', onHash) })
 </script>
 
@@ -254,9 +256,17 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
               <article class="panel region-explorer-map"><div class="panel-heading"><div><h2>地图选点</h2><span>点击圆点查看区域库存与补车建议</span></div><span class="tiny-label">{{ regions.length }} POINTS</span></div><RegionMap :regions="regions" :selected="selected" :tasks="tasks" :minute="data.minute" @select="selected = $event"/></article>
               <article v-if="selectedRegion" class="panel region-inspector"><div class="region-inspector-top"><span class="eyebrow">SELECTED REGION · {{ String(selectedRegion.id).padStart(2,'0') }}</span><span :class="['status-pill', selectedRegion.shortage ? 'orange-pill' : 'green-pill']">{{ selectedRegion.shortage ? '待补 ' + selectedRegion.shortage + ' 辆' : '库存充足' }}</span></div><h2>{{ selectedRegion.name }}</h2><p>{{ typeNames[selectedRegion.kind] }} · 示范停车区域</p><div class="region-inspector-stock"><strong>{{ selectedRegion.stock }}<small> / {{ selectedRegion.capacity }}</small></strong><span>当前库存 / 停车容量</span></div><div class="stock-track"><div :style="{ width: Math.min(100, selectedRegion.stock / selectedRegion.capacity * 100) + '%' }"></div></div><div class="region-inspector-metrics"><div><span>30 分钟目标</span><strong>{{ selectedRegion.target }} 辆</strong></div><div><span>安全库存</span><strong>{{ selectedRegion.safetyStock }} 辆</strong></div><div><span>已安排调入</span><strong>{{ selectedRegion.reservedIn }} 辆</strong></div></div><div class="region-inspector-actions"><button class="btn" @click="openEdit(selectedRegion)"><Settings2 :size="16"/>编辑区域</button><button class="btn primary" @click="navigate('forecast')">查看预测<ArrowRight :size="16"/></button></div></article>
             </section>
-            <details class="panel table-panel">
+            <details class="panel table-panel" :open="regionListOpen" @toggle="regionListOpen = $event.target.open">
               <summary class="table-summary"><span>区域清单</span><span class="table-summary-meta">{{ filteredRegions.length }} 个区域 · {{ alerts.length }} 个待补</span><ChevronDown :size="18" class="chev"/></summary>
-<div class="table-toolbar"><div class="search-field"><Search :size="18"/><input v-model="search" placeholder="搜索停车区域" aria-label="搜索停车区域"/></div><select v-model="filter" aria-label="筛选停车区域"><option value="all">全部区域</option><option value="shortage">待补车区域</option><option v-for="(name,key) in typeNames" :value="key" :key="key">{{ name }}</option></select><span class="table-count">共 {{ filteredRegions.length }} 个区域</span></div><div class="table-scroll"><table><thead><tr><th>停车区域</th><th>区域类型</th><th>当前库存 / 容量</th><th>安全库存</th><th>目标库存</th><th>供需状态</th><th>操作</th></tr></thead><tbody><tr v-for="r in filteredRegions" :key="r.id"><td><span class="region-number">{{ String(r.id).padStart(2,'0') }}</span><strong>{{ r.name }}</strong></td><td>{{ typeNames[r.kind] }}</td><td><div class="table-stock"><span>{{ r.stock }}<small> / {{ r.capacity }}</small></span><div class="stock-track"><div :style="{ width:r.stock/r.capacity*100+'%', background:r.shortage?'#e7a14c':'#14a583' }"></div></div></div></td><td>{{ r.safetyStock }} 辆</td><td>{{ r.target }} 辆</td><td><span :class="['status-pill', r.shortage ? 'orange-pill' : 'green-pill']">{{ r.shortage ? '待补 ' + r.shortage + ' 辆' : r.reservedIn ? '补车已安排' : '库存充足' }}</span></td><td><button class="text-button" @click="openEdit(r)">编辑</button></td></tr><tr v-if="!filteredRegions.length"><td colspan="7" class="empty-table">没有找到匹配的停车区域</td></tr></tbody></table></div><div class="table-footer"><Info :size="16"/>区域为示范点位；编辑容量与安全库存后，补车建议会重新计算。</div></details>
+<div class="table-toolbar"><div class="search-field"><Search :size="18"/><input v-model="search" placeholder="搜索停车区域" aria-label="搜索停车区域"/></div><select v-model="filter" aria-label="筛选停车区域"><option value="all">全部区域</option><option value="shortage">待补车区域</option><option v-for="(name,key) in typeNames" :value="key" :key="key">{{ name }}</option></select><span class="table-count">共 {{ filteredRegions.length }} 个区域</span></div><div class="list-rows">
+                <div v-for="r in filteredRegions" :key="r.id" :class="['list-row', { 'is-selected': selected === r.id }]" @click="selected = r.id">
+                  <span class="row-icon"><MapPin :size="18"/></span>
+                  <div class="row-main"><strong>{{ r.name }}</strong><span>{{ typeNames[r.kind] }} · 容量 {{ r.capacity }} 辆 · 安全库存 {{ r.safetyStock }} 辆</span></div>
+                  <div class="row-side"><span class="row-figure">{{ r.stock }}<small> / {{ r.capacity }}</small></span><span :class="['status-pill', r.shortage ? 'orange-pill' : 'green-pill']">{{ r.shortage ? '待补 ' + r.shortage + ' 辆' : r.reservedIn ? '补车已安排' : '库存充足' }}</span></div>
+                  <button class="text-button" @click.stop="openEdit(r)">编辑</button>
+                </div>
+                <p v-if="!filteredRegions.length" class="empty-table">没有找到匹配的停车区域</p>
+              </div><div class="table-footer"><Info :size="16"/>区域为示范点位；编辑容量与安全库存后，补车建议会重新计算。</div></details>
           </template>
 
           <template v-if="current === 'forecast'">
@@ -279,26 +289,23 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
                 <select v-model="taskFilter" aria-label="筛选任务状态"><option value="all">全部状态</option><option v-for="(name,key) in statusNames" :key="key" :value="key">{{ name }}</option></select>
                 <span class="table-count">共 {{ filteredTasks.length }} 条记录</span>
               </div>
-              <div class="table-scroll"><table><thead><tr><th>任务编号</th><th>搬运路线</th><th>数量</th><th>状态</th><th></th></tr></thead><tbody>
+              <div class="list-rows">
                 <template v-for="task in filteredTasks" :key="task.id">
-                  <tr class="record-row" @click="toggleTask(task.id)">
-                    <td><span class="task-id">{{ task.id }}</span></td>
-                    <td><div class="record-route"><strong>{{ regionName(task.sourceId) }}</strong><ArrowRight :size="14"/><strong>{{ regionName(task.destinationId) }}</strong></div></td>
-                    <td>{{ task.quantity }} 辆</td>
-                    <td><span :class="['task-status', task.status.toLowerCase()]">{{ statusNames[task.status] }}</span></td>
-                    <td><ChevronDown :size="16" :class="['chev', { open: expandedTask === task.id }]"/></td>
-                  </tr>
-                  <tr v-if="expandedTask === task.id" class="record-detail-row">
-                    <td colspan="5"><div class="record-detail">
-                      <div><span>运输车</span><strong>0{{ task.vehicle }}</strong></div>
-                      <div><span>开始 / 完成</span><strong>{{ task.startedMinute != null ? time(task.startedMinute) : '未开始' }}<template v-if="task.completedMinute != null"> → {{ time(task.completedMinute) }}</template></strong></div>
-                      <div><span>里程 / 时长</span><strong>{{ task.distance.toFixed(1) }} km / {{ task.duration }} 分钟</strong></div>
-                      <div class="record-reason-cell"><span>生成原因</span><p>{{ task.reason || '旧记录未保存原因' }}</p></div>
-                    </div></td>
-                  </tr>
+                  <div class="list-row" @click="toggleTask(task.id)">
+                    <span class="row-icon"><Truck :size="18"/></span>
+                    <div class="row-main"><strong>{{ regionName(task.sourceId) }} → {{ regionName(task.destinationId) }}</strong><span>{{ task.id }} · {{ task.quantity }} 辆 · 运输车 0{{ task.vehicle }} · 创建 {{ time(task.createdMinute) }}</span></div>
+                    <span :class="['task-status', task.status.toLowerCase()]">{{ statusNames[task.status] }}</span>
+                    <ChevronDown :size="16" :class="['chev', { open: expandedTask === task.id }]"/>
+                  </div>
+                  <div v-if="expandedTask === task.id" class="record-detail record-detail-inline">
+                    <div><span>运输车</span><strong>0{{ task.vehicle }}</strong></div>
+                    <div><span>开始 / 完成</span><strong>{{ task.startedMinute != null ? time(task.startedMinute) : '未开始' }}<template v-if="task.completedMinute != null"> → {{ time(task.completedMinute) }}</template></strong></div>
+                    <div><span>里程 / 时长</span><strong>{{ task.distance.toFixed(1) }} km / {{ task.duration }} 分钟</strong></div>
+                    <div class="record-reason-cell"><span>生成原因</span><p>{{ task.reason || '旧记录未保存原因' }}</p></div>
+                  </div>
                 </template>
-                <tr v-if="!filteredTasks.length"><td colspan="5" class="empty-table">没有符合条件的任务记录。生成调度方案并推进时间后，这里会出现完整轨迹。</td></tr>
-              </tbody></table></div>
+                <p v-if="!filteredTasks.length" class="empty-table">没有符合条件的任务记录。生成调度方案并推进时间后，这里会出现完整轨迹。</p>
+              </div>
               <div class="table-footer"><Info :size="16"/>记录由后端持久化；时间随工作台 +5 分钟推进，重置场景会清除全部任务。</div>
             </article>
           </template>
