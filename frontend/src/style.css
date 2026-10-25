@@ -610,3 +610,38 @@ td{padding:18px 20px;font-size:13px}
 .dispatch-layout>*, .task-list, .task-card{min-width:0}
 @media(max-width:700px){.task-header{flex-wrap:wrap}.task-header .task-status{margin-left:auto}}
 .warming-chip{font-size:11px;color:#b26a00;background:#fdf3e3;border-radius:999px;padding:3px 9px;margin-left:4px}
+@media(max-width:700px){
+  .task-header{flex-wrap:nowrap}
+  .task-id{flex:1;min-width:0;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .task-status{flex-shrink:0;margin-left:8px}
+}
+@media(max-width:700px){
+  .dispatch-toolbar{gap:10px}
+  .dispatch-toolbar>div:first-child{flex-wrap:wrap;row-gap:6px}
+  .dispatch-toolbar strong{white-space:nowrap}
+  .dispatch-toolbar .warming-chip{flex-basis:100%;margin:2px 0 0;text-align:center}
+  .dispatch-toolbar .clock-controls{width:100%;justify-content:space-between}
+}
+@media(max-width:800px){
+  .sidebar{z-index:1200}
+  .sidebar-scrim{z-index:1150}
+  .toast{z-index:1300}
+}
+@media(max-width:700px){
+  .experiment-config{flex-direction:column;align-items:stretch}
+  .experiment-config-title{width:100%}
+  .experiment-config>button{width:100%}
+  .experiment-settings-toggle{justify-content:space-between;padding:8px 0}
+  .plan-compare{padding:20px 16px}
+  .plan-compare-head{flex-direction:column;align-items:flex-start;gap:12px}
+  .plan-compare-head p{font-size:12px;line-height:1.6}
+  .plan-compare-actions{width:100%;justify-content:flex-end}
+  .compare-row{flex-wrap:wrap}
+  .compare-row .row-side{width:100%;margin-left:52px;justify-content:space-between;gap:8px}
+  .compare-metric{font-size:11px}
+  .compare-delta{min-width:0}
+  .compare-chart{display:none}
+  .compare-chart-legend{display:none}
+  .row-main span{white-space:normal;line-height:1.5}
+}
+.task-card:focus-visible,.list-row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
