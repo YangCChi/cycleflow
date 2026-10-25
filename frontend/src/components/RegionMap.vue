@@ -327,11 +327,26 @@ function scheduleAmapFit() {
 function fitAmapArea() {
   if (!amap) return
   if (amapMarkers.length) {
-    amap.setFitView(amapMarkers, false, [45, 45, 45, 45], 15)
-    if (amap.getZoom() < 14.5) amap.setZoomAndCenter(14.5, amap.getCenter())
+    let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity
+    for (const marker of amapMarkers) {
+      const point = marker.getPosition()
+      const lng = point.getLng ? point.getLng() : point.lng
+      const lat = point.getLat ? point.getLat() : point.lat
+      minLng = Math.min(minLng, lng); maxLng = Math.max(maxLng, lng)
+      minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat)
+    }
+    const width = container.value?.clientWidth || 640
+    const height = container.value?.clientHeight || 480
+    const padding = 70
+    const midLng = (minLng + maxLng) / 2, midLat = (minLat + maxLat) / 2
+    const lngSpan = Math.max(maxLng - minLng, 1e-6), latSpan = Math.max(maxLat - minLat, 1e-6)
+    const zoomLng = Math.log2(((width - padding * 2) * 360) / (256 * lngSpan))
+    const metersPerPixel = 156543.03392 * Math.cos(midLat * Math.PI / 180)
+    const zoomLat = Math.log2(((height - padding * 2) * metersPerPixel) / (latSpan * 111320))
+    const zoom = Math.max(13, Math.min(16, Math.min(zoomLng, zoomLat)))
+    amap.setZoomAndCenter(Math.max(13, Math.min(16, Math.floor(zoom))), [midLng, midLat])
     fitted = true
-  }
-  else {
+  } else {
     const [lng, lat] = wgs84ToGcj02(campus[1], campus[0])
     amap.setZoomAndCenter(14, [lng, lat])
   }
