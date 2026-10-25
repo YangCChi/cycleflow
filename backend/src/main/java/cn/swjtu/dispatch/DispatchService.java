@@ -320,12 +320,13 @@ public class DispatchService {
         return legs;
     }
 
-    private List<RouteOptimizer.Leg> candidateLegs(List<Region> all, MatrixData matrix, int maxLegs, String scenario, int now) {
+    private List<RouteOptimizer.Leg> candidateLegs(List<Region> all, MatrixData matrix, int maxLegs, String scenario, int now, double stockFactor) {
         Map<Integer,Integer> supply = new HashMap<>(), need = new HashMap<>();
         for (Region r : all) {
             int target = DemandModel.target(r, scenario, now);
-            supply.put(r.id(), Math.max(0, r.stock() - target));
-            need.put(r.id(), Math.max(0, target - r.stock()));
+            int stock = (int) Math.round(r.stock() * stockFactor);
+            supply.put(r.id(), Math.max(0, stock - target));
+            need.put(r.id(), Math.max(0, target - stock));
         }
         List<RouteOptimizer.Leg> legs = new ArrayList<>();
         while (legs.size() < maxLegs) {
@@ -347,7 +348,7 @@ public class DispatchService {
     public synchronized PlanComparison planComparison() {
         List<Region> all = regions();
         MatrixData matrix = matrixData(all);
-        List<RouteOptimizer.Leg> legs = candidateLegs(all, matrix, 6, state("scenario"), minute());
+        List<RouteOptimizer.Leg> legs = candidateLegs(all, matrix, 6, state("scenario"), minute(), 1.0);
         if (legs.isEmpty()) throw error("当前没有可对比的搬运需求");
         List<RouteOptimizer.Route> greedy = serialRoutes(legs, List.of(1, 2));
         List<RouteOptimizer.Route> optimized = RouteOptimizer.plan(matrix.km(), legs);
@@ -363,18 +364,42 @@ public class DispatchService {
         int now = minute();
         List<PlanComparisonRow> rows = new ArrayList<>();
         for (String scenario : DemandModel.SCENARIOS) {
-            List<RouteOptimizer.Leg> legs = candidateLegs(all, matrix, 6, scenario, now);
-            if (legs.isEmpty()) {
-                rows.add(new PlanComparisonRow(scenario, 0, 0, 0, null, null));
+            List<double[]> greedy = new ArrayList<>(), optimized = new ArrayList<>();
+            int legsTotal = 0;
+            for (double factor : new double[]{0.95, 1.0, 1.05}) {
+                List<RouteOptimizer.Leg> legs = candidateLegs(all, matrix, 6, scenario, now, factor);
+                if (legs.isEmpty()) continue;
+                legsTotal += legs.size();
+                List<RouteOptimizer.Route> greedyRoutes = serialRoutes(legs, List.of(1, 2));
+                greedy.add(new double[]{routeKm(greedyRoutes, matrix), routeMinutes(greedyRoutes, matrix)});
+                List<RouteOptimizer.Route> optimizedRoutes = RouteOptimizer.plan(matrix.km(), legs);
+                if (optimizedRoutes != null) optimized.add(new double[]{routeKm(optimizedRoutes, matrix), routeMinutes(optimizedRoutes, matrix)});
+            }
+            if (greedy.isEmpty()) {
+                rows.add(new PlanComparisonRow(scenario, 0, 0, 0, 0, 0, 0, null, null, null, null));
                 continue;
             }
-            List<RouteOptimizer.Route> greedy = serialRoutes(legs, List.of(1, 2));
-            List<RouteOptimizer.Route> optimized = RouteOptimizer.plan(matrix.km(), legs);
-            rows.add(new PlanComparisonRow(scenario, legs.size(), routeKm(greedy, matrix), routeMinutes(greedy, matrix),
-                    optimized == null ? null : routeKm(optimized, matrix),
-                    optimized == null ? null : routeMinutes(optimized, matrix)));
+            int samples = greedy.size();
+            rows.add(new PlanComparisonRow(scenario, samples, Math.round((float) legsTotal / samples),
+                    mean(greedy, 0), min(greedy, 0), max(greedy, 0), (int) Math.round(mean(greedy, 1)),
+                    optimized.isEmpty() ? null : mean(optimized, 0),
+                    optimized.isEmpty() ? null : min(optimized, 0),
+                    optimized.isEmpty() ? null : max(optimized, 0),
+                    optimized.isEmpty() ? null : (int) Math.round(mean(optimized, 1))));
         }
         return rows;
+    }
+
+    private static double mean(List<double[]> values, int index) {
+        return Math.round(values.stream().mapToDouble(v -> v[index]).average().orElse(0) * 10) / 10.0;
+    }
+
+    private static double min(List<double[]> values, int index) {
+        return values.stream().mapToDouble(v -> v[index]).min().orElse(0);
+    }
+
+    private static double max(List<double[]> values, int index) {
+        return values.stream().mapToDouble(v -> v[index]).max().orElse(0);
     }
 
     private double routeKm(List<RouteOptimizer.Route> routes, MatrixData matrix) {

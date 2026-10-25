@@ -458,3 +458,4 @@ tbody tr:hover{background:#fafafa}
 .plan-compare-table th{padding:10px 12px}
 .plan-compare-table td{padding:12px}
 .plan-compare-table strong.good{color:var(--accent)}
+.plan-compare-table small.range{display:block;margin-top:4px;font-size:10px;color:var(--text-3)}
