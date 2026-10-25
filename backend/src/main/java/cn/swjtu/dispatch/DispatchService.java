@@ -162,9 +162,12 @@ public class DispatchService {
         });
     }
 
-    public synchronized Snapshot advance() {
+    public synchronized Snapshot advance() { return advance(5); }
+
+    public synchronized Snapshot advance(int minutes) {
+        if (minutes < 1 || minutes > 60) throw error("推进分钟数须在 1～60 之间");
         return tx.execute(status -> {
-            state("minute", minute() + 5);
+            state("minute", minute() + minutes);
             for (TripRow trip : trips()) if (trip.status().equals("RUNNING")) applyStops(trip.id());
             return snapshot();
         });

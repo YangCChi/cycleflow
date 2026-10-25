@@ -18,7 +18,7 @@ public class ApiController {
     @GetMapping("/regions/{id}/forecast") public List<ForecastPoint> forecast(@PathVariable int id) { return service.forecast(id); }
     @PostMapping("/dispatch/generate") public Snapshot generate() { return service.generate(); }
     @PostMapping("/dispatch/{id}/{action}") public Snapshot action(@PathVariable String id, @PathVariable String action) { return service.action(id, action); }
-    @PostMapping("/simulation/advance") public Snapshot advance() { return service.advance(); }
+    @PostMapping("/simulation/advance") public Snapshot advance(@RequestParam(defaultValue = "5") int minutes) { return service.advance(minutes); }
     @PostMapping("/simulation/reset") public Snapshot reset(@RequestBody Map<String,String> body) { return service.reset(body.getOrDefault("scenario", "morning")); }
     @GetMapping("/experiments") public ExperimentResult experiment(@RequestParam(defaultValue="42") long seed) { return service.experiment(seed); }
     @GetMapping("/experiments/summary") public ExperimentSummary experimentSummary(@RequestParam(defaultValue="42") long seed, @RequestParam(defaultValue="5") int runs) { return service.experimentSummary(seed, runs); }

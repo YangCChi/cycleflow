@@ -37,6 +37,14 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.generate());
         assertEquals(s.tasks().size(), service.snapshot().tasks().size());
     }
+    @Test void advanceCanMoveOneMinuteAtATime() {
+        int before = service.snapshot().minute();
+        Snapshot after = service.advance(1);
+        assertEquals(before + 1, after.minute());
+        assertThrows(ResponseStatusException.class, () -> service.advance(0));
+        assertThrows(ResponseStatusException.class, () -> service.advance(61));
+    }
+
     @Test void pickupAndArrivalConserveBikesAndRejectRepeatedStart() {
         Task t = service.generate().tasks().stream().filter(task -> task.sequence() == 1).findFirst().orElseThrow();
         int initialDestination = service.snapshot().regions().stream().filter(r -> r.id() == t.destinationId()).findFirst().orElseThrow().stock();
