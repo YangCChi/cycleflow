@@ -20,6 +20,7 @@ public class ApiController {
     @GetMapping("/experiments") public ExperimentResult experiment(@RequestParam(defaultValue="42") long seed) { return service.experiment(seed); }
     @GetMapping("/experiments/summary") public ExperimentSummary experimentSummary(@RequestParam(defaultValue="42") long seed, @RequestParam(defaultValue="5") int runs) { return service.experimentSummary(seed, runs); }
     @GetMapping("/dispatch/compare") public PlanComparison comparePlans() { return service.planComparison(); }
+    @GetMapping("/dispatch/compare/summary") public List<PlanComparisonRow> compareAllPlans() { return service.planComparisonSummary(); }
     @GetMapping("/road-matrix") public RoadMatrixStatus roadMatrix() { return matrix.status(); }
     @PostMapping("/road-matrix/refresh") public RoadMatrixStatus refreshRoadMatrix() { matrix.refreshNow(); return matrix.status(); }
 }

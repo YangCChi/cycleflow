@@ -95,14 +95,12 @@ async function refreshMatrix() {
 async function comparePlans() {
   if (comparing.value) return
   comparing.value = true
-  try { planCompare.value = await api('/dispatch/compare') } catch (e) { notify(e.message) }
+  try { planCompare.value = await api('/dispatch/compare/summary') } catch (e) { notify(e.message) }
   finally { comparing.value = false }
 }
-const planDelta = computed(() => {
-  const value = planCompare.value
-  if (!value?.ortoolsAvailable || !value.greedyKm) return null
-  return Math.round((value.ortoolsKm - value.greedyKm) / value.greedyKm * 1000) / 10
-})
+const rowDelta = row => !row?.ortoolsKm || !row.greedyKm
+  ? null
+  : Math.round((row.ortoolsKm - row.greedyKm) / row.greedyKm * 1000) / 10
 
 async function mutate(path, body, message, method = 'POST') {
   if (busy.value) return false
@@ -294,13 +292,19 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
           <template v-if="current === 'experiments'">
             <div class="notice"><FlaskConical :size="18"/><span>独立回放，不改变工作台库存。三种策略使用相同初始库存、请求序列及 2 辆运输车。距离口径：{{ data.distanceModel }}。</span><button class="text-button" :disabled="matrixRefreshing" @click="refreshMatrix">{{ matrixRefreshing ? '刷新中…' : '刷新矩阵' }}</button></div><article class="panel experiment-config"><div class="experiment-config-title"><div class="section-icon"><FlaskConical :size="24"/></div><div><h2>策略对比实验</h2><p>3 小时 · 1,260 次模拟借车请求 · 可重复多种子回放</p></div></div><button class="experiment-settings-toggle" :aria-expanded="experimentSettings" @click="experimentSettings = !experimentSettings">{{ experimentSettings ? '收起设置' : `种子 ${seed} · 重复 ${runs} 次` }}<ChevronDown :size="15" :class="['chev', { open: experimentSettings }]"/></button><button class="btn primary" :disabled="experimenting || activeTasks.length > 0" @click="runExperiment"><Play :size="16"/>{{ experimenting ? '正在运行…' : '运行对比实验' }}</button><div v-if="experimentSettings" class="experiment-settings-body"><label>随机种子<input type="number" v-model.number="seed" min="0" max="999999" aria-label="随机种子"/></label><label>重复次数<select v-model.number="runs" aria-label="重复次数" :disabled="experimenting"><option v-for="n in [1,3,5,10]" :key="n" :value="n">{{ n }} 次</option></select></label></div></article><p v-if="activeTasks.length" class="inline-warning">请先完成或取消调度任务，确保实验从完整的地面库存开始。</p>
             <article class="panel plan-compare">
-              <div class="plan-compare-head"><div><h2>路径规划对比</h2><p>同一批候选搬运，比较「贪心串行」与「OR-Tools 取送路径」的总里程和用时。</p></div><button class="btn" :disabled="comparing" @click="comparePlans">{{ comparing ? '计算中…' : '运行对比' }}</button></div>
-              <div v-if="planCompare" class="plan-compare-grid">
-                <div><span>贪心串行</span><strong>{{ planCompare.greedyKm }} km</strong><small>{{ planCompare.greedyMinutes }} 分钟 · {{ planCompare.legs }} 个单</small></div>
-                <div class="featured"><span>OR-Tools</span><strong v-if="planCompare.ortoolsAvailable">{{ planCompare.ortoolsKm }} km</strong><strong v-else>不可用</strong><small v-if="planCompare.ortoolsAvailable">{{ planCompare.ortoolsMinutes }} 分钟</small></div>
-                <div v-if="planCompare.ortoolsAvailable"><span>里程变化</span><strong :class="planDelta <= 0 ? 'good' : ''">{{ planDelta > 0 ? '+' : '' }}{{ planDelta }}%</strong><small>相对贪心串行</small></div>
+              <div class="plan-compare-head"><div><h2>路径规划对比</h2><p>三个场景各取一批候选搬运，比较「贪心串行」与「OR-Tools 取送路径」的总里程和用时。</p></div><button class="btn" :disabled="comparing" @click="comparePlans">{{ comparing ? '计算中…' : '运行对比' }}</button></div>
+              <div v-if="planCompare" class="plan-compare-table">
+                <table><thead><tr><th>场景</th><th>单数</th><th>贪心串行</th><th>OR-Tools</th><th>里程变化</th></tr></thead><tbody>
+                  <tr v-for="row in planCompare" :key="row.scenario">
+                    <td>{{ scenarioNames[row.scenario] }}</td>
+                    <td>{{ row.legs }}</td>
+                    <td>{{ row.greedyKm }} km <span class="muted">· {{ row.greedyMinutes }} 分钟</span></td>
+                    <td><template v-if="row.ortoolsKm != null">{{ row.ortoolsKm }} km <span class="muted">· {{ row.ortoolsMinutes }} 分钟</span></template><template v-else>不可用</template></td>
+                    <td><strong :class="rowDelta(row) != null && rowDelta(row) <= 0 ? 'good' : ''">{{ rowDelta(row) == null ? '—' : (rowDelta(row) > 0 ? '+' : '') + rowDelta(row) + '%' }}</strong></td>
+                  </tr>
+                </tbody></table>
               </div>
-              <p v-else class="plan-compare-hint">候选对按当前供需临时生成，不改变工作台里的任务。</p>
+              <p v-else class="plan-compare-hint">候选对按当前供需临时生成，不改变工作台里的任务；OR-Tools 不可用时该行显示「不可用」。</p>
             </article>
             <div v-if="!summary" class="panel experiment-placeholder"><div class="experiment-placeholder-icon"><ChartNoAxesCombined :size="42"/></div><h2>让数据回答，哪种策略更合适</h2><p>对比借车成功率、缺车时长与搬运成本。多种子重复运行，同时给出均值与波动范围。</p><div class="strategy-chips"><span>01 不调度</span><span>02 阈值就近调度</span><span>03 预测优先调度</span></div></div>
             <template v-else>

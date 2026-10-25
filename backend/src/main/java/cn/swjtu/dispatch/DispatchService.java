@@ -320,9 +320,7 @@ public class DispatchService {
         return legs;
     }
 
-    private List<RouteOptimizer.Leg> candidateLegs(List<Region> all, MatrixData matrix, int maxLegs) {
-        String scenario = state("scenario");
-        int now = minute();
+    private List<RouteOptimizer.Leg> candidateLegs(List<Region> all, MatrixData matrix, int maxLegs, String scenario, int now) {
         Map<Integer,Integer> supply = new HashMap<>(), need = new HashMap<>();
         for (Region r : all) {
             int target = DemandModel.target(r, scenario, now);
@@ -349,7 +347,7 @@ public class DispatchService {
     public synchronized PlanComparison planComparison() {
         List<Region> all = regions();
         MatrixData matrix = matrixData(all);
-        List<RouteOptimizer.Leg> legs = candidateLegs(all, matrix, 6);
+        List<RouteOptimizer.Leg> legs = candidateLegs(all, matrix, 6, state("scenario"), minute());
         if (legs.isEmpty()) throw error("当前没有可对比的搬运需求");
         List<RouteOptimizer.Route> greedy = serialRoutes(legs, List.of(1, 2));
         List<RouteOptimizer.Route> optimized = RouteOptimizer.plan(matrix.km(), legs);
@@ -357,6 +355,26 @@ public class DispatchService {
                 optimized == null ? null : routeKm(optimized, matrix),
                 optimized == null ? null : routeMinutes(optimized, matrix),
                 optimized != null);
+    }
+
+    public synchronized List<PlanComparisonRow> planComparisonSummary() {
+        List<Region> all = regions();
+        MatrixData matrix = matrixData(all);
+        int now = minute();
+        List<PlanComparisonRow> rows = new ArrayList<>();
+        for (String scenario : DemandModel.SCENARIOS) {
+            List<RouteOptimizer.Leg> legs = candidateLegs(all, matrix, 6, scenario, now);
+            if (legs.isEmpty()) {
+                rows.add(new PlanComparisonRow(scenario, 0, 0, 0, null, null));
+                continue;
+            }
+            List<RouteOptimizer.Route> greedy = serialRoutes(legs, List.of(1, 2));
+            List<RouteOptimizer.Route> optimized = RouteOptimizer.plan(matrix.km(), legs);
+            rows.add(new PlanComparisonRow(scenario, legs.size(), routeKm(greedy, matrix), routeMinutes(greedy, matrix),
+                    optimized == null ? null : routeKm(optimized, matrix),
+                    optimized == null ? null : routeMinutes(optimized, matrix)));
+        }
+        return rows;
     }
 
     private double routeKm(List<RouteOptimizer.Route> routes, MatrixData matrix) {

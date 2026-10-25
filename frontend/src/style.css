@@ -453,3 +453,8 @@ tbody tr:hover{background:#fafafa}
 .plan-compare-grid strong.good{color:var(--accent)}
 .plan-compare-grid small{font-size:11px;color:var(--text-3)}
 .plan-compare-hint{margin-top:16px;font-size:12px;color:var(--text-3)}
+.plan-compare-table{margin-top:16px;overflow:auto}
+.plan-compare-table table{font-size:13px}
+.plan-compare-table th{padding:10px 12px}
+.plan-compare-table td{padding:12px}
+.plan-compare-table strong.good{color:var(--accent)}

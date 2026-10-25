@@ -142,6 +142,17 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.reset("unknown"));
         assertEquals(before, service.snapshot());
     }
+    @Test void plannerComparisonCoversAllScenarios() {
+        List<PlanComparisonRow> rows = service.planComparisonSummary();
+        assertEquals(3, rows.size());
+        assertEquals(Set.of("morning", "evening", "weekend"), new HashSet<>(rows.stream().map(PlanComparisonRow::scenario).toList()));
+        for (PlanComparisonRow row : rows) {
+            if (row.legs() == 0) continue;
+            assertTrue(row.greedyKm() > 0 && row.greedyMinutes() > 0);
+            if (row.ortoolsKm() != null) assertTrue(row.ortoolsKm() > 0 && row.ortoolsMinutes() > 0);
+        }
+    }
+
     @Test void plannerComparisonReportsBothPlans() {
         PlanComparison comparison = service.planComparison();
         assertTrue(comparison.legs() >= 2);
