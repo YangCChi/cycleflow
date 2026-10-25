@@ -459,3 +459,9 @@ tbody tr:hover{background:#fafafa}
 .plan-compare-table td{padding:12px}
 .plan-compare-table strong.good{color:var(--accent)}
 .plan-compare-table small.range{display:block;margin-top:4px;font-size:10px;color:var(--text-3)}
+.plan-compare-actions{display:flex;gap:8px;align-items:center}
+.compare-chart{width:100%;height:auto;margin-top:10px;display:block}
+.compare-chart .chart-value{font-size:11px;fill:#6e6e73}
+.compare-chart-legend{display:flex;gap:18px;align-items:center;margin-top:16px;font-size:11px;color:var(--text-2)}
+.compare-chart-legend span{display:flex;align-items:center;gap:6px}
+.compare-chart-legend .muted{margin-left:auto;color:var(--text-3)}

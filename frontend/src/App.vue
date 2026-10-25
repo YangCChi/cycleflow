@@ -101,6 +101,20 @@ async function comparePlans() {
 const rowDelta = row => !row?.ortoolsKm || !row.greedyKm
   ? null
   : Math.round((row.ortoolsKm - row.greedyKm) / row.greedyKm * 1000) / 10
+const chartMax = () => Math.max(1, ...(planCompare.value || []).map(row => Math.max(row.greedyKmMax || 0, row.ortoolsKmMax || 0)))
+const chartY = value => 200 - (value / chartMax()) * 150
+function downloadCompareCsv() {
+  if (!planCompare.value?.length) return
+  const head = ['scenario', 'samples', 'legs', 'greedy_km', 'greedy_km_min', 'greedy_km_max', 'greedy_minutes', 'ortools_km', 'ortools_km_min', 'ortools_km_max', 'ortools_minutes', 'km_delta_percent']
+  const lines = planCompare.value.map(row => [row.scenario, row.samples, row.legs, row.greedyKm, row.greedyKmMin, row.greedyKmMax,
+    row.greedyMinutes, row.ortoolsKm ?? '', row.ortoolsKmMin ?? '', row.ortoolsKmMax ?? '', row.ortoolsMinutes ?? '', rowDelta(row) ?? ''].join(','))
+  const blob = new Blob([head.join(',') + '\n' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = 'cycleflow-plan-comparison.csv'
+  link.click()
+  URL.revokeObjectURL(link.href)
+}
 
 async function mutate(path, body, message, method = 'POST') {
   if (busy.value) return false
@@ -174,7 +188,7 @@ const forecastMax = computed(() => Math.max(20, ...forecast.value.flatMap(p => [
 const plotLine = key => forecast.value.map((p,i) => `${65+i*85},${255-p[key]/forecastMax.value*200}`).join(' ')
 watch([current, selected, () => data.value?.minute, () => data.value?.scenario], () => { if (current.value === 'forecast') loadForecast() })
 watch(current, () => { if (current.value !== 'dispatch' && current.value !== 'overview') playing.value = false })
-onMounted(async () => { window.addEventListener('hashchange', onHash); await load(); if (current.value === 'forecast') loadForecast(); interval = setInterval(() => { if (playing.value && !busy.value) advance() }, 1400) })
+onMounted(async () => { window.addEventListener('hashchange', onHash); await load(); if (current.value === 'forecast') loadForecast(); if (new URLSearchParams(location.search).has('compare')) comparePlans(); interval = setInterval(() => { if (playing.value && !busy.value) advance() }, 1400) })
 onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.removeEventListener('hashchange', onHash) })
 </script>
 
@@ -292,7 +306,7 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
           <template v-if="current === 'experiments'">
             <div class="notice"><FlaskConical :size="18"/><span>独立回放，不改变工作台库存。三种策略使用相同初始库存、请求序列及 2 辆运输车。距离口径：{{ data.distanceModel }}。</span><button class="text-button" :disabled="matrixRefreshing" @click="refreshMatrix">{{ matrixRefreshing ? '刷新中…' : '刷新矩阵' }}</button></div><article class="panel experiment-config"><div class="experiment-config-title"><div class="section-icon"><FlaskConical :size="24"/></div><div><h2>策略对比实验</h2><p>3 小时 · 1,260 次模拟借车请求 · 可重复多种子回放</p></div></div><button class="experiment-settings-toggle" :aria-expanded="experimentSettings" @click="experimentSettings = !experimentSettings">{{ experimentSettings ? '收起设置' : `种子 ${seed} · 重复 ${runs} 次` }}<ChevronDown :size="15" :class="['chev', { open: experimentSettings }]"/></button><button class="btn primary" :disabled="experimenting || activeTasks.length > 0" @click="runExperiment"><Play :size="16"/>{{ experimenting ? '正在运行…' : '运行对比实验' }}</button><div v-if="experimentSettings" class="experiment-settings-body"><label>随机种子<input type="number" v-model.number="seed" min="0" max="999999" aria-label="随机种子"/></label><label>重复次数<select v-model.number="runs" aria-label="重复次数" :disabled="experimenting"><option v-for="n in [1,3,5,10]" :key="n" :value="n">{{ n }} 次</option></select></label></div></article><p v-if="activeTasks.length" class="inline-warning">请先完成或取消调度任务，确保实验从完整的地面库存开始。</p>
             <article class="panel plan-compare">
-              <div class="plan-compare-head"><div><h2>路径规划对比</h2><p>三个场景、每场景按库存 ±5% 各取三个样本，比较「贪心串行」与「OR-Tools 取送路径」的总里程和用时。</p></div><button class="btn" :disabled="comparing" @click="comparePlans">{{ comparing ? '计算中…' : '运行对比' }}</button></div>
+              <div class="plan-compare-head"><div><h2>路径规划对比</h2><p>三个场景、每场景按库存 ±5% 各取三个样本，比较「贪心串行」与「OR-Tools 取送路径」的总里程和用时。</p></div><div class="plan-compare-actions"><button v-if="planCompare" class="btn" @click="downloadCompareCsv">导出 CSV</button><button class="btn primary" :disabled="comparing" @click="comparePlans">{{ comparing ? '计算中…' : '运行对比' }}</button></div></div>
               <div v-if="planCompare" class="plan-compare-table">
                 <table><thead><tr><th>场景</th><th>样本</th><th>贪心串行</th><th>OR-Tools</th><th>里程变化</th></tr></thead><tbody>
                   <tr v-for="row in planCompare" :key="row.scenario">
@@ -303,6 +317,25 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
                     <td><strong :class="rowDelta(row) != null && rowDelta(row) <= 0 ? 'good' : ''">{{ rowDelta(row) == null ? '—' : (rowDelta(row) > 0 ? '+' : '') + rowDelta(row) + '%' }}</strong></td>
                   </tr>
                 </tbody></table>
+                <div class="compare-chart-legend"><span><i class="legend-dot blue"></i>贪心串行</span><span><i class="legend-dot green"></i>OR-Tools</span><span class="muted">柱高为均值，细线为样本范围</span></div>
+                <svg class="compare-chart" viewBox="0 0 720 250" role="img" aria-label="各场景贪心与 OR-Tools 总里程对比">
+                  <line v-for="tick in [0,1,2,3]" :key="tick" x1="40" :x2="700" :y1="200 - tick * 50" :y2="200 - tick * 50" stroke="#f0f0f2"/>
+                  <g v-for="(row,i) in planCompare" :key="row.scenario">
+                    <line :x1="91 + i * 220" :x2="91 + i * 220" :y1="chartY(row.greedyKmMax)" :y2="chartY(row.greedyKmMin)" stroke="#a1a1a6" stroke-width="1"/>
+                    <line :x1="86 + i * 220" :x2="96 + i * 220" :y1="chartY(row.greedyKmMax)" :y2="chartY(row.greedyKmMax)" stroke="#a1a1a6" stroke-width="1"/>
+                    <line :x1="86 + i * 220" :x2="96 + i * 220" :y1="chartY(row.greedyKmMin)" :y2="chartY(row.greedyKmMin)" stroke="#a1a1a6" stroke-width="1"/>
+                    <rect :x="70 + i * 220" :y="chartY(row.greedyKm)" width="42" :height="200 - chartY(row.greedyKm)" rx="4" fill="#d2d2d7"/>
+                    <text :x="91 + i * 220" :y="chartY(row.greedyKm) - 7" text-anchor="middle" class="chart-value">{{ row.greedyKm }}</text>
+                    <template v-if="row.ortoolsKm != null">
+                      <line :x1="141 + i * 220" :x2="141 + i * 220" :y1="chartY(row.ortoolsKmMax)" :y2="chartY(row.ortoolsKmMin)" stroke="#0a7c5a" stroke-width="1"/>
+                      <line :x1="136 + i * 220" :x2="146 + i * 220" :y1="chartY(row.ortoolsKmMax)" :y2="chartY(row.ortoolsKmMax)" stroke="#0a7c5a" stroke-width="1"/>
+                      <line :x1="136 + i * 220" :x2="146 + i * 220" :y1="chartY(row.ortoolsKmMin)" :y2="chartY(row.ortoolsKmMin)" stroke="#0a7c5a" stroke-width="1"/>
+                      <rect :x="120 + i * 220" :y="chartY(row.ortoolsKm)" width="42" :height="200 - chartY(row.ortoolsKm)" rx="4" fill="#0a7c5a"/>
+                      <text :x="141 + i * 220" :y="chartY(row.ortoolsKm) - 7" text-anchor="middle" class="chart-value">{{ row.ortoolsKm }}</text>
+                    </template>
+                    <text :x="120 + i * 220" y="236" text-anchor="middle" class="chart-label">{{ scenarioNames[row.scenario] }}</text>
+                  </g>
+                </svg>
               </div>
               <p v-else class="plan-compare-hint">候选对按当前供需临时生成，不改变工作台里的任务；OR-Tools 不可用时该行显示「不可用」。</p>
             </article>
