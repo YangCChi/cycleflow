@@ -328,7 +328,7 @@ function fitAmapArea() {
   if (!amap) return
   if (amapMarkers.length) {
     amap.setFitView(amapMarkers, false, [45, 45, 45, 45], 15)
-    if (amap.getZoom() < 14) amap.setZoomAndCenter(14, amap.getCenter())
+    if (amap.getZoom() < 14.5) amap.setZoomAndCenter(14.5, amap.getCenter())
     fitted = true
   }
   else {
