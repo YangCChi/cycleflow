@@ -20,8 +20,8 @@ let amap
 let leafletMarkers
 let leafletRoutes
 let leafletTrucks
-let amapTrucks = []
 let amapTraveled = []
+const amapTruckState = new Map()
 let leafletTraveled
 let fitted = false
 let fitTimer
@@ -303,12 +303,26 @@ function drawAmapRoutes() {
   if (amapRoutes.length) amap.add(amapRoutes)
 }
 
+function animateTruck(entry, target) {
+  cancelAnimationFrame(entry.raf)
+  const start = entry.point || target
+  const began = performance.now()
+  const step = now => {
+    const k = Math.min(1, (now - began) / 700)
+    const eased = 1 - Math.pow(1 - k, 3)
+    const point = [start[0] + (target[0] - start[0]) * eased, start[1] + (target[1] - start[1]) * eased]
+    entry.marker.setPosition(point)
+    entry.point = point
+    if (k < 1) entry.raf = requestAnimationFrame(step)
+  }
+  entry.raf = requestAnimationFrame(step)
+}
+
 function drawAmapTrucks() {
   if (!amap) return
-  if (amapTrucks.length) amap.remove(amapTrucks)
   if (amapTraveled.length) amap.remove(amapTraveled)
-  amapTrucks = []
   amapTraveled = []
+  const seen = new Set()
   for (const task of runningByVehicle()) {
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
@@ -317,25 +331,38 @@ function drawAmapTrucks() {
     const points = cached && cached.length
       ? cached.map(asPair)
       : [gcjPosition(source), gcjPosition(destination)]
-    const [traveled] = slicePath(points, progressOf(task))
+    const progress = progressOf(task)
+    const target = along(points, progress)
+    const key = task.vehicle
+    seen.add(key)
+    let entry = amapTruckState.get(key)
+    if (!entry) {
+      const element = document.createElement('div')
+      element.className = 'truck-marker'
+      element.innerHTML = truckSvg()
+      const marker = new window.AMap.Marker({
+        position: target, content: element, offset: new window.AMap.Pixel(-19, -19), zIndex: 140, bubble: true
+      })
+      amap.add(marker)
+      entry = { marker, point: target, raf: 0 }
+      amapTruckState.set(key, entry)
+    } else {
+      animateTruck(entry, target)
+    }
+    const [traveled] = slicePath(points, progress)
     if (traveled.length > 1) {
       amapTraveled.push(new window.AMap.Polyline({
         path: traveled, strokeColor: '#0a7c5a', strokeWeight: 5, strokeOpacity: 1, strokeStyle: 'solid', zIndex: 132
       }))
     }
-    const element = document.createElement('div')
-    element.className = 'truck-marker'
-    element.innerHTML = truckSvg()
-    amapTrucks.push(new window.AMap.Marker({
-      position: along(points, progressOf(task)),
-      content: element,
-      offset: new window.AMap.Pixel(-19, -19),
-      zIndex: 140,
-      bubble: true
-    }))
+  }
+  for (const [key, entry] of amapTruckState) {
+    if (seen.has(key)) continue
+    cancelAnimationFrame(entry.raf)
+    amap.remove(entry.marker)
+    amapTruckState.delete(key)
   }
   if (amapTraveled.length) amap.add(amapTraveled)
-  if (amapTrucks.length) amap.add(amapTrucks)
 }
 
 function drawAmap(fit) {
