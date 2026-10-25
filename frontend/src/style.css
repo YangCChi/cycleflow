@@ -655,3 +655,7 @@ td{padding:18px 20px;font-size:13px}
 .truck-marker svg{animation:truck-bob 2.4s ease-in-out infinite}
 .task-header .task-id{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .task-header .task-status{flex-shrink:0;white-space:nowrap}
+.page-view{will-change:opacity,transform}
+.page-enter-active,.page-leave-active{transition:opacity .18s ease,transform .18s ease}
+.page-enter-from{opacity:0;transform:translateY(4px)}
+.page-leave-to{opacity:0}

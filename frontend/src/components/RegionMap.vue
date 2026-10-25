@@ -5,7 +5,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 const props = defineProps({ regions: { type: Array, default: () => [] }, selected: Number, tasks: { type: Array, default: () => [] }, minute: { type: Number, default: 0 }, focusedTask: String })
-const emit = defineEmits(['select'])
+const emit = defineEmits(['select', 'clear'])
 const container = ref(null)
 const tileError = ref(false)
 const loadNote = ref('')
@@ -26,6 +26,7 @@ const grownRoutes = new Set()
 let leafletTraveled
 let fitted = false
 let fitTimer
+let markerClickAt = 0
 let amapMarkers = []
 let amapRoutes = []
 let tileLayer
@@ -162,7 +163,7 @@ function drawLeafletMarkers() {
     })
     const description = region.name + '，' + region.stock + ' 辆；演示停车点，位置未实测'
     L.marker(position(region), { icon, title: description, alt: description, keyboard: true })
-      .on('click', () => emit('select', region.id)).addTo(leafletMarkers)
+      .on('click', () => { markerClickAt = Date.now(); emit('select', region.id) }).addTo(leafletMarkers)
   }
 }
 
@@ -242,6 +243,7 @@ function initLeaflet() {
   drawLeafletMarkers()
   drawLeafletTrucks()
   fitLeafletArea()
+  map.on('click', () => { if (Date.now() - markerClickAt > 250) emit('clear') })
   mapEngine.value = 'leaflet'
   window.setTimeout(() => map?.invalidateSize(), 120)
 }
@@ -409,7 +411,7 @@ function drawAmap(fit) {
       title: region.name + '，' + region.stock + ' 辆；演示停车点，位置未实测',
       zIndex: active ? 120 : 100
     })
-    marker.on('click', () => emit('select', region.id))
+    marker.on('click', () => { markerClickAt = Date.now(); emit('select', region.id) })
     amapMarkers.push(marker)
   }
   if (amapMarkers.length) amap.add(amapMarkers)
@@ -461,6 +463,7 @@ function initAmap() {
     scrollWheel: false, zoomControl: false, resizeEnable: true
   })
   mapEngine.value = 'amap'
+  amap.on('click', () => { if (Date.now() - markerClickAt > 250) emit('clear') })
   drawAmap(true)
   scheduleAmapFit()
 }
