@@ -87,7 +87,8 @@ AMAP_WEB_KEY=你的Web服务Key
 ## 校验
 
 ```bash
-./scripts/check.sh
+./scripts/check.sh    # 构建前端并跑后端测试
+./scripts/smoke.sh    # 服务已启动时，检查健康、矩阵、对比等关键接口
 ```
 
 自动化测试覆盖运输车重复分配、容量预留、重复执行、取送库存守恒、取消释放、区域校验、三种场景的实验可复现性及无效重置保护。手动验收记录见 [docs/第一版验收.md](docs/第一版验收.md)。

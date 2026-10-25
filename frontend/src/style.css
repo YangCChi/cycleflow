@@ -609,3 +609,4 @@ td{padding:18px 20px;font-size:13px}
 }
 .dispatch-layout>*, .task-list, .task-card{min-width:0}
 @media(max-width:700px){.task-header{flex-wrap:wrap}.task-header .task-status{margin-left:auto}}
+.warming-chip{font-size:11px;color:#b26a00;background:#fdf3e3;border-radius:999px;padding:3px 9px;margin-left:4px}
