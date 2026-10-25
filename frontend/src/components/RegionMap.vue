@@ -1,8 +1,6 @@
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Plus, Minus, LocateFixed } from 'lucide-vue-next'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
 
 const props = defineProps({ regions: { type: Array, default: () => [] }, selected: Number, tasks: { type: Array, default: () => [] }, minute: { type: Number, default: 0 }, focusedTask: String })
 const emit = defineEmits(['select', 'clear'])
@@ -15,6 +13,7 @@ const campus = [30.7660599, 103.9844831]
 const amapKey = import.meta.env.VITE_AMAP_KEY
 const amapSecurity = import.meta.env.VITE_AMAP_SECURITY_CODE
 
+let L = null
 let map
 let amap
 let leafletMarkers
@@ -151,7 +150,7 @@ function wgs84ToGcj02(lng, lat) {
 const gcjPosition = region => wgs84ToGcj02(region.longitude, region.latitude)
 
 function drawLeafletMarkers() {
-  if (!map) return
+  if (!map || !L) return
   leafletMarkers.clearLayers()
   for (const region of props.regions.filter(isMapped)) {
     const active = props.selected === region.id
@@ -168,7 +167,7 @@ function drawLeafletMarkers() {
 }
 
 function drawLeafletTrucks() {
-  if (!map) return
+  if (!map || !L) return
   leafletTrucks.clearLayers()
   leafletTraveled.clearLayers()
   for (const task of runningByVehicle()) {
@@ -185,7 +184,7 @@ function drawLeafletTrucks() {
 }
 
 function drawLeafletRoutes() {
-  if (!map) return
+  if (!map || !L) return
   leafletRoutes.clearLayers()
   for (const task of props.tasks.filter(item => ['PLANNED', 'RUNNING'].includes(item.status))) {
     const source = props.regions.find(region => region.id === task.sourceId)
@@ -203,7 +202,7 @@ function drawLeafletRoutes() {
 }
 
 function fitLeafletArea() {
-  if (!map) return
+  if (!map || !L) return
   const points = props.regions.filter(isMapped).map(position)
   if (points.length) { map.fitBounds(L.latLngBounds(points), { padding: [45, 45], maxZoom: 15, animate: false }); fitted = true }
   else map.setView(campus, 14)
@@ -232,7 +231,12 @@ function addTileLayer(index) {
     .addTo(map)
 }
 
-function initLeaflet() {
+async function initLeaflet() {
+  if (!L) {
+    const module = await import('leaflet')
+    await import('leaflet/dist/leaflet.css')
+    L = module.default
+  }
   map = L.map(container.value, { zoomControl: false, scrollWheelZoom: false, minZoom: 11, maxZoom: 19 })
   addTileLayer(0)
   leafletRoutes = L.layerGroup().addTo(map)
