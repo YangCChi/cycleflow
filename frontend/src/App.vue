@@ -215,11 +215,18 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
     <div class="main-shell">
       <header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-button" aria-label="打开导航" @click="mobileNav = !mobileNav"><Menu :size="22"/></button><span>调度工作台</span><ChevronRight :size="14"/><strong>{{ page.label }}</strong></div><div class="topbar-right"><span class="demo-badge"><span></span>仿真演示</span><span class="header-separator"></span><MapPin :size="15"/><span class="location-label">成都 · 犀浦</span></div></header>
       <main>
-        <div v-if="loading" class="loading-panel"><div class="spinner"></div><h2>正在加载调度工作台</h2><p>读取停车区域与任务记录</p></div>
+        <div v-if="loading" class="skeleton-page" aria-busy="true" aria-label="正在加载调度工作台">
+          <div class="skeleton skeleton-eyebrow"></div>
+          <div class="skeleton skeleton-title"></div>
+          <div class="skeleton skeleton-sub"></div>
+          <div class="skeleton-stats"><div v-for="i in 4" :key="i" class="skeleton skeleton-stat"></div></div>
+          <div class="skeleton skeleton-map"></div>
+        </div>
         <div v-else-if="error" class="loading-panel"><CircleAlert :size="40"/><h2>服务暂不可用</h2><p>{{ error }}</p><button class="btn primary" @click="load">重新连接</button></div>
         <template v-else-if="data">
           <transition name="page" mode="out-in">
             <div :key="current" class="page-view">
+              <div v-if="!plannerReady" class="warming-banner">路径求解器正在预热，生成方案与运行实验暂时不可用，通常需要 10–20 秒。</div>
           <section class="page-heading"><div><span class="eyebrow">{{ page.en }}</span><h1>{{ page.label }}<span v-if="current === 'overview'" class="heading-dot"></span></h1><p>{{ { overview: '从供需变化，到每一次精准调度。', regions: '管理服务区域的停车容量与安全库存。', forecast: '提前看见需求，安排下一次补车。', dispatch: '将补车建议转化为可执行的搬运任务。', records: '查看每一次补车从生成到送达的完整记录。', experiments: '用相同的出行请求，比较不同调度策略。' }[current] }}</p></div><div class="heading-actions"><template v-if="current === 'dispatch'"><button class="btn" :disabled="busy" @click="requestReset()"><RefreshCw :size="16"/>重置场景</button><button class="btn primary" :disabled="busy || !plannerReady" @click="generate"><Route :size="17"/>{{ busy ? '处理中…' : '生成调度方案' }}</button></template><template v-else-if="current === 'overview'"><button class="btn primary" :disabled="busy || !plannerReady" @click="generate"><Route :size="17"/>{{ busy ? '处理中…' : '生成调度方案' }}</button></template><template v-else-if="current === 'records'"><button class="btn" @click="downloadTasksCsv"><Download :size="16"/>导出任务 CSV</button></template><button v-else class="btn" @click="infoDialog.showModal()"><Info :size="16"/>数据说明</button></div></section>
 
           <template v-if="current === 'overview'">
