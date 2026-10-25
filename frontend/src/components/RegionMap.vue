@@ -2,7 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Plus, Minus, LocateFixed } from 'lucide-vue-next'
 
-const props = defineProps({ regions: { type: Array, default: () => [] }, selected: Number, tasks: { type: Array, default: () => [] }, minute: { type: Number, default: 0 }, focusedTask: String })
+const props = defineProps({ regions: { type: Array, default: () => [] }, selected: Number, tasks: { type: Array, default: () => [] }, minute: { type: Number, default: 0 }, focusedTask: String, follow: Boolean })
 const emit = defineEmits(['select', 'clear'])
 const container = ref(null)
 const tileError = ref(false)
@@ -612,6 +612,20 @@ watch(() => props.focusTask, id => {
 watch(() => props.minute, () => {
   if (mapEngine.value === 'amap') drawAmapTrucks()
   else drawLeafletTrucks()
+  if (!props.follow) return
+  const running = runningByVehicle()
+  if (!running.length) return
+  const task = running[0]
+  const source = props.regions.find(region => region.id === task.sourceId)
+  const destination = props.regions.find(region => region.id === task.destinationId)
+  if (!isMapped(source) || !isMapped(destination)) return
+  if (mapEngine.value === 'amap') {
+    const cached = routePaths.get(task.id)
+    const points = cached && cached.length ? cached.map(asPair) : [gcjPosition(source), gcjPosition(destination)]
+    amap?.panTo(along(points, progressOf(task)))
+  } else if (map) {
+    map.panTo(along([position(source), position(destination)], progressOf(task)))
+  }
 })
 watch(() => props.selected, id => {
   const region = props.regions.find(item => item.id === id)

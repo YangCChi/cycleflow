@@ -672,3 +672,4 @@ td{padding:18px 20px;font-size:13px}
 @keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
 .warming-banner{margin-bottom:18px;padding:12px 16px;border-radius:12px;background:#fdf6ea;border:1px solid #f3e4c9;color:#8a611f;font-size:12px;line-height:1.6}
 @media(max-width:700px){.skeleton-stats{grid-template-columns:repeat(2,1fr)}.skeleton-map{height:320px}.skeleton-title{width:70%}.skeleton-sub{width:85%}}
+.btn.is-on{background:#e8f5ef;border-color:#cfe9dd;color:var(--accent)}
