@@ -469,30 +469,70 @@ function drawAmapTrucks() {
   syncFlow()
 }
 
+function clusterMode() {
+  return mapEngine.value === 'amap' && !!amap && (container.value?.clientWidth || 0) < 560 && amap.getZoom() <= 14.2
+}
+
+function clusterSvg(count) {
+  return '<svg width="46" height="46" viewBox="0 0 46 46" xmlns="http://www.w3.org/2000/svg">'
+    + '<circle cx="23" cy="23" r="20" fill="#0a7c5a" stroke="#fff" stroke-width="2.5"/>'
+    + '<text x="23" y="28" text-anchor="middle" font-size="13" font-weight="600" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,sans-serif">' + count + '</text></svg>'
+}
+
+function addAmapStation(region, active) {
+  const wrapper = document.createElement('div')
+  wrapper.className = 'station-marker ' + tone(region) + (active ? ' selected' : '')
+  wrapper.innerHTML = stationSvg(region, active)
+  wrapper.tabIndex = 0
+  wrapper.setAttribute('role', 'button')
+  wrapper.setAttribute('aria-label', region.name + '，现有 ' + region.stock + ' 辆，待补 ' + Math.max(0, region.shortage) + ' 辆')
+  wrapper.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); emit('select', region.id) }
+  })
+  const marker = new window.AMap.Marker({
+    position: gcjPosition(region),
+    content: wrapper,
+    offset: new window.AMap.Pixel(-17, -41),
+    title: region.name + '，' + region.stock + ' 辆；演示停车点，位置未实测',
+    zIndex: active ? 120 : 100
+  })
+  marker.on('click', () => { markerClickAt = Date.now(); emit('select', region.id) })
+  amapMarkers.push(marker)
+}
+
 function drawAmap(fit) {
   if (!amap) return
   if (amapMarkers.length) amap.remove(amapMarkers)
   amapMarkers = []
-  for (const region of props.regions.filter(isMapped)) {
-    const active = props.selected === region.id
-    const wrapper = document.createElement('div')
-    wrapper.className = 'station-marker ' + tone(region) + (active ? ' selected' : '')
-    wrapper.innerHTML = stationSvg(region, active)
-    wrapper.tabIndex = 0
-    wrapper.setAttribute('role', 'button')
-    wrapper.setAttribute('aria-label', region.name + '，现有 ' + region.stock + ' 辆，待补 ' + Math.max(0, region.shortage) + ' 辆')
-    wrapper.addEventListener('keydown', event => {
-      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); emit('select', region.id) }
-    })
-    const marker = new window.AMap.Marker({
-      position: gcjPosition(region),
-      content: wrapper,
-      offset: new window.AMap.Pixel(-17, -41),
-      title: region.name + '，' + region.stock + ' 辆；演示停车点，位置未实测',
-      zIndex: active ? 120 : 100
-    })
-    marker.on('click', () => { markerClickAt = Date.now(); emit('select', region.id) })
-    amapMarkers.push(marker)
+  const mapped = props.regions.filter(isMapped)
+  if (clusterMode()) {
+    const groups = new Map()
+    for (const region of mapped) {
+      const key = Math.round(region.latitude / 0.01) + ':' + Math.round(region.longitude / 0.01)
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(region)
+    }
+    for (const group of groups.values()) {
+      if (group.length === 1) { addAmapStation(group[0], props.selected === group[0].id); continue }
+      const center = group[0]
+      const wrapper = document.createElement('div')
+      wrapper.className = 'station-marker cluster-marker'
+      wrapper.innerHTML = clusterSvg(group.length)
+      wrapper.tabIndex = 0
+      wrapper.setAttribute('role', 'button')
+      wrapper.setAttribute('aria-label', group.length + ' 个相邻停车区域，点击放大')
+      wrapper.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); amap?.setZoomAndCenter(15, gcjPosition(center)) }
+      })
+      const marker = new window.AMap.Marker({
+        position: gcjPosition(center), content: wrapper, offset: new window.AMap.Pixel(-23, -23),
+        title: group.length + ' 个相邻停车区域', zIndex: 110
+      })
+      marker.on('click', () => amap?.setZoomAndCenter(15, gcjPosition(center)))
+      amapMarkers.push(marker)
+    }
+  } else {
+    for (const region of mapped) addAmapStation(region, props.selected === region.id)
   }
   if (amapMarkers.length) amap.add(amapMarkers)
   drawAmapRoutes()
@@ -544,6 +584,7 @@ function initAmap() {
   })
   mapEngine.value = 'amap'
   amap.on('click', () => { if (Date.now() - markerClickAt > 250) emit('clear') })
+  amap.on('zoomend', () => drawAmap(false))
   drawAmap(true)
   scheduleAmapFit()
 }
