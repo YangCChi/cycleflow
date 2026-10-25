@@ -473,9 +473,9 @@ function clusterMode() {
   return mapEngine.value === 'amap' && !!amap && (container.value?.clientWidth || 0) < 560 && amap.getZoom() <= 14.2
 }
 
-function clusterSvg(count) {
+function clusterSvg(count, color = '#0a7c5a') {
   return '<svg width="46" height="46" viewBox="0 0 46 46" xmlns="http://www.w3.org/2000/svg">'
-    + '<circle cx="23" cy="23" r="20" fill="#0a7c5a" stroke="#fff" stroke-width="2.5"/>'
+    + '<circle cx="23" cy="23" r="20" fill="' + color + '" stroke="#fff" stroke-width="2.5"/>'
     + '<text x="23" y="28" text-anchor="middle" font-size="13" font-weight="600" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,sans-serif">' + count + '</text></svg>'
 }
 
@@ -515,9 +515,10 @@ function drawAmap(fit) {
     for (const group of groups.values()) {
       if (group.length === 1) { addAmapStation(group[0], props.selected === group[0].id); continue }
       const center = group[0]
+      const shortage = group.some(region => region.shortage > 0)
       const wrapper = document.createElement('div')
-      wrapper.className = 'station-marker cluster-marker'
-      wrapper.innerHTML = clusterSvg(group.length)
+      wrapper.className = 'station-marker cluster-marker' + (shortage ? ' shortage' : '')
+      wrapper.innerHTML = clusterSvg(group.length, shortage ? '#d9822b' : '#0a7c5a')
       wrapper.tabIndex = 0
       wrapper.setAttribute('role', 'button')
       wrapper.setAttribute('aria-label', group.length + ' 个相邻停车区域，点击放大')

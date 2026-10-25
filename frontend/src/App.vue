@@ -189,8 +189,8 @@ function downloadCsv() {
 function downloadTasksCsv() {
   if (!filteredTasks.value.length) return notify('当前没有可导出的任务记录')
   const rows = [
-    ['任务编号','状态','取车区域','送车区域','数量(辆)','运输车','里程(km)','时长(分钟)','创建时间','开始时间','完成时间','生成原因'],
-    ...filteredTasks.value.map(t => [t.id,statusNames[t.status],regionName(t.sourceId),regionName(t.destinationId),t.quantity,'0'+t.vehicle,t.distance,t.duration,time(t.createdMinute),t.startedMinute != null ? time(t.startedMinute) : '',t.completedMinute != null ? time(t.completedMinute) : '',t.reason || ''])
+    ['任务编号','行程','第几单','状态','取车区域','送车区域','数量(辆)','运输车','里程(km)','时长(分钟)','最晚送达','创建时间','开始时间','完成时间','生成原因'],
+    ...filteredTasks.value.map(t => [t.id,t.tripId || '',t.sequence,statusNames[t.status],regionName(t.sourceId),regionName(t.destinationId),t.quantity,'0'+t.vehicle,t.distance,t.duration,t.deadlineMinute != null ? time(t.deadlineMinute) : '',time(t.createdMinute),t.startedMinute != null ? time(t.startedMinute) : '',t.completedMinute != null ? time(t.completedMinute) : '',t.reason || ''])
   ]
   saveCsv(rows, `交点-任务记录-${data.value?.scenario || 'demo'}.csv`)
 }
