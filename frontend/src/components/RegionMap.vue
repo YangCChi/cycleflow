@@ -22,6 +22,7 @@ let leafletRoutes
 let leafletTrucks
 let amapTrucks = []
 let fitted = false
+let fitTimer
 let amapMarkers = []
 let amapRoutes = []
 let tileLayer
@@ -318,6 +319,11 @@ function drawAmap(fit) {
   if (fit) fitAmapArea()
 }
 
+function scheduleAmapFit() {
+  window.clearTimeout(fitTimer)
+  fitTimer = window.setTimeout(() => fitAmapArea(), 350)
+}
+
 function fitAmapArea() {
   if (!amap) return
   if (amapMarkers.length) {
@@ -339,6 +345,7 @@ function initAmap() {
   })
   mapEngine.value = 'amap'
   drawAmap(true)
+  scheduleAmapFit()
 }
 
 function loadAmap() {
@@ -372,7 +379,7 @@ onMounted(async () => {
 watch(() => props.regions, () => {
   if (mapEngine.value === 'amap') {
     drawAmap(false)
-    if (!fitted && amapMarkers.length) fitAmapArea()
+    if (!fitted && amapMarkers.length) { fitAmapArea(); scheduleAmapFit() }
   } else if (map) {
     drawLeafletMarkers(); drawLeafletRoutes()
     if (!fitted && props.regions.length) fitLeafletArea()

@@ -549,3 +549,18 @@ td{padding:18px 20px;font-size:13px}
 .plan-summary{background:#fff;border:1px solid rgba(16,24,40,.04);border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:16px 20px}
 .plan-summary-icon{width:40px;height:40px;border-radius:12px;background:#edf6f1;color:var(--accent);display:grid;place-items:center}
 .panel-heading{padding:20px 22px}
+
+/* map chrome and sidebar footer */
+.workspace-label{display:none}
+.sidebar-bottom{padding-top:24px}
+.profile{padding:14px 4px 0;gap:10px}
+.avatar{width:30px;height:30px;font-size:12px}
+.profile strong{font-size:12px}
+.profile span{font-size:10px;margin-top:2px}
+.map-panel .panel-heading{height:auto;padding:20px 24px}
+.map-stage .leaflet-map{border-radius:0 0 18px 18px}
+.map-controls{border-radius:12px;box-shadow:0 2px 12px rgba(16,24,40,.1);border:1px solid rgba(16,24,40,.06)}
+.map-controls button{padding:9px}
+.map-legend-toggle{box-shadow:0 1px 3px rgba(16,24,40,.06)}
+.map-panel .table-footer{padding:14px 24px;font-size:11px;color:#9aa4b1;border-top:1px solid #f4f6f8}
+.region-explorer-map .leaflet-map{border-radius:0 0 18px 18px}
