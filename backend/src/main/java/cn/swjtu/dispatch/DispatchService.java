@@ -153,10 +153,11 @@ public class DispatchService {
                 db.update("UPDATE dispatch_trips SET status='RUNNING',start_minute=? WHERE id=?", minute(), trip.id());
                 applyStops(trip.id());
             } else if (action.equals("cancel")) {
-                if (trip.status().equals("RUNNING")) throw error("行程已在执行中，无法取消");
-                if (!trip.status().equals("PLANNED")) throw error("行程已结束");
+                if (!task.status().equals("PLANNED")) throw error("仅待执行的任务可以取消");
+                if (!trip.status().equals("PLANNED") && !trip.status().equals("RUNNING")) throw error("行程已结束");
                 db.update("UPDATE dispatch_tasks SET status='CANCELLED' WHERE trip_id=? AND status='PLANNED'", trip.id());
-                db.update("UPDATE dispatch_trips SET status='CANCELLED' WHERE id=?", trip.id());
+                if (trip.status().equals("PLANNED")) db.update("UPDATE dispatch_trips SET status='CANCELLED' WHERE id=?", trip.id());
+                else if (tasks().stream().noneMatch(t -> trip.id().equals(t.tripId()) && active(t))) db.update("UPDATE dispatch_trips SET status='COMPLETED' WHERE id=?", trip.id());
             } else throw error("不支持的操作");
             return snapshot();
         });

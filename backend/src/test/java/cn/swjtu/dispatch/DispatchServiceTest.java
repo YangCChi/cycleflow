@@ -194,6 +194,22 @@ class DispatchServiceTest {
         }
     }
 
+    @Test void canCancelRemainingStopsOfRunningTrip() {
+        Snapshot s = service.generate();
+        Map<String, List<Task>> trips = new TreeMap<>();
+        for (Task t : s.tasks()) if (t.tripId() != null) trips.computeIfAbsent(t.tripId(), k -> new ArrayList<>()).add(t);
+        List<Task> trip = trips.values().stream().filter(legs -> legs.size() >= 2).findFirst().orElseThrow();
+        Task first = trip.stream().min(Comparator.comparingInt(Task::pickupSeq)).orElseThrow();
+        service.action(first.id(), "start");
+        Task later = trip.stream().filter(t -> !t.id().equals(first.id())).filter(t -> t.status().equals("PLANNED")).findFirst().orElseThrow();
+        service.action(later.id(), "cancel");
+        assertEquals("CANCELLED", status(later.id()));
+        assertEquals("RUNNING", status(first.id()));
+        for (int i = 0; i < 60 && service.snapshot().tasks().stream().anyMatch(t -> t.status().equals("RUNNING")); i++) service.advance();
+        assertEquals("COMPLETED", status(first.id()));
+        assertEquals(500, service.snapshot().totalBikes());
+    }
+
     @Test void tripRunsItsStopsUntilDone() {
         Snapshot s = service.generate();
         Map<String, List<Task>> trips = new TreeMap<>();

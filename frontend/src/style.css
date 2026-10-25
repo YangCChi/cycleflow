@@ -675,3 +675,5 @@ td{padding:18px 20px;font-size:13px}
 .btn.is-on{background:#e8f5ef;border-color:#cfe9dd;color:var(--accent)}
 .cluster-marker{filter:drop-shadow(0 4px 10px rgba(0,0,0,.22))}
 .cluster-marker svg{display:block}
+.task-cancel-link{margin-left:10px;font-size:11px;color:var(--text-3)}
+.task-cancel-link:hover{color:#b3441f}
