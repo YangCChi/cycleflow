@@ -172,7 +172,8 @@ function drawLeafletTrucks() {
   if (!map || !L) return
   leafletTrucks.clearLayers()
   leafletTraveled.clearLayers()
-  for (const task of runningByVehicle()) {
+  const runningTrucks = focusActive() ? runningByVehicle().filter(task => task.id === props.focusTask) : runningByVehicle()
+  for (const task of runningTrucks) {
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
     if (!isMapped(source) || !isMapped(destination)) continue
@@ -188,7 +189,9 @@ function drawLeafletTrucks() {
 function drawLeafletRoutes() {
   if (!map || !L) return
   leafletRoutes.clearLayers()
+  const isolatedLeaflet = focusActive()
   for (const task of props.tasks.filter(item => ['PLANNED', 'RUNNING'].includes(item.status))) {
+    if (isolatedLeaflet && task.id !== props.focusTask) continue
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
     if (!isMapped(source) || !isMapped(destination)) continue
@@ -299,7 +302,9 @@ function drawAmapRoutes() {
   amapRoutes = []
   const growing = []
   const activeIds = new Set()
+  const isolated = focusActive()
   for (const task of props.tasks.filter(item => ['PLANNED', 'RUNNING'].includes(item.status))) {
+    if (isolated && task.id !== props.focusTask) continue
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
     if (!isMapped(source) || !isMapped(destination)) continue
@@ -333,6 +338,8 @@ function drawAmapRoutes() {
   for (const item of growing) { grownRoutes.add(item.id); animateRoute(item.line, item.points) }
 }
 
+const focusActive = () => !!props.focusTask && props.tasks.some(task => task.id === props.focusTask && ['PLANNED', 'RUNNING'].includes(task.status))
+
 function sliceBetween(points, from, to) {
   if (points.length < 2) return points
   const segments = []
@@ -360,7 +367,7 @@ function sliceBetween(points, from, to) {
 
 function flowTick() {
   if (!amap) { flowFrame = 0; return }
-  const running = runningByVehicle()
+  const running = focusActive() ? runningByVehicle().filter(task => task.id === props.focusTask) : runningByVehicle()
   const seen = new Set()
   const phase = ((performance.now() % 2600) / 2600) * 0.93
   for (const task of running) {
@@ -418,7 +425,8 @@ function drawAmapTrucks() {
   if (amapTraveled.length) amap.remove(amapTraveled)
   amapTraveled = []
   const seen = new Set()
-  for (const task of runningByVehicle()) {
+  const runningTrucks = focusActive() ? runningByVehicle().filter(task => task.id === props.focusTask) : runningByVehicle()
+  for (const task of runningTrucks) {
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
     if (!isMapped(source) || !isMapped(destination)) continue
