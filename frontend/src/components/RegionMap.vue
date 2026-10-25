@@ -22,6 +22,7 @@ let leafletRoutes
 let leafletTrucks
 let amapTraveled = []
 const amapTruckState = new Map()
+const grownRoutes = new Set()
 let leafletTraveled
 let fitted = false
 let fitTimer
@@ -272,23 +273,40 @@ function planAmapRoute(task, source, destination) {
   })
 }
 
+function animateRoute(line, points) {
+  const started = performance.now()
+  const duration = 620
+  const step = now => {
+    const k = Math.min(1, (now - started) / duration)
+    const [partial] = slicePath(points, 1 - Math.pow(1 - k, 2))
+    line.setPath(partial)
+    if (k < 1) requestAnimationFrame(step)
+  }
+  requestAnimationFrame(step)
+}
+
 function drawAmapRoutes() {
   if (!amap) return
   if (amapRoutes.length) amap.remove(amapRoutes)
   amapRoutes = []
+  const growing = []
+  const activeIds = new Set()
   for (const task of props.tasks.filter(item => ['PLANNED', 'RUNNING'].includes(item.status))) {
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
     if (!isMapped(source) || !isMapped(destination)) continue
+    activeIds.add(task.id)
     const cached = routePaths.get(task.id)
-    const path = cached || [gcjPosition(source), gcjPosition(destination)]
+    const points = cached && cached.length ? cached.map(asPair) : [gcjPosition(source), gcjPosition(destination)]
     const focused = props.focusTask === task.id
     const emphasized = focused || props.selected === task.sourceId || props.selected === task.destinationId
     const running = task.status === 'RUNNING'
-    if (cached) {
+    const first = !grownRoutes.has(task.id)
+    const path = first ? [points[0]] : points
+    if (cached && !first) {
       amapRoutes.push(new window.AMap.Polyline({ path, strokeColor: '#ffffff', strokeWeight: 9, strokeOpacity: .95, strokeStyle: 'solid', zIndex: 58 }))
     }
-    amapRoutes.push(new window.AMap.Polyline({
+    const line = new window.AMap.Polyline({
       path,
       strokeColor: '#078763',
       strokeWeight: focused ? 7 : (emphasized ? 6 : 4),
@@ -297,10 +315,14 @@ function drawAmapRoutes() {
       strokeDasharray: task.status === 'PLANNED' ? [9, 7] : undefined,
       showDir: !running && emphasized,
       zIndex: 60
-    }))
+    })
+    amapRoutes.push(line)
+    if (first) growing.push({ line, points, id: task.id })
     if (!cached) planAmapRoute(task, source, destination)
   }
   if (amapRoutes.length) amap.add(amapRoutes)
+  for (const id of grownRoutes) if (!activeIds.has(id)) grownRoutes.delete(id)
+  for (const item of growing) { grownRoutes.add(item.id); animateRoute(item.line, item.points) }
 }
 
 function animateTruck(entry, target) {
