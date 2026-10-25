@@ -529,3 +529,23 @@ td{padding:18px 20px;font-size:13px}
 .empty-table{text-align:center;padding:34px 0;color:#9aa4b1;font-size:12px}
 .record-detail-inline{padding:0 2px 18px 66px;border-bottom:1px solid #f0f2f5;margin-top:-4px;grid-template-columns:repeat(3,minmax(0,1fr))}
 .record-detail-inline .record-reason-cell{grid-column:1/-1}
+
+/* experiments and summary polish */
+.experiment-config{padding:20px 22px;gap:18px}
+.experiment-config-title{gap:14px}
+.experiment-config-title h2{font-size:16px}
+.experiment-config-title p{font-size:12px;color:#8a95a3;margin-top:5px}
+.experiment-settings-body{flex-direction:column;gap:0;border-top:1px solid #f0f2f5;margin-top:8px;padding-top:4px}
+.experiment-settings-body label{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:10px 0;border-bottom:1px solid #f4f6f8;font-size:13px;color:#4a5563}
+.experiment-settings-body label:last-child{border-bottom:0}
+.experiment-settings-body input,.experiment-settings-body select{width:120px;text-align:right}
+.compare-rows{padding:4px 24px 10px;margin-top:14px}
+.compare-row .row-main span{font-size:11px}
+.compare-row .row-side{gap:16px}
+.compare-metric{font-size:12px;color:#8a95a3;white-space:nowrap}
+.compare-metric b{font-weight:600;color:#1d1d1f}
+.compare-delta{font-size:13px;font-weight:600;color:#1d1d1f;min-width:58px;text-align:right}
+.compare-delta.good{color:var(--accent)}
+.plan-summary{background:#fff;border:1px solid rgba(16,24,40,.04);border-radius:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);padding:16px 20px}
+.plan-summary-icon{width:40px;height:40px;border-radius:12px;background:#edf6f1;color:var(--accent);display:grid;place-items:center}
+.panel-heading{padding:20px 22px}

@@ -314,16 +314,16 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
             <div class="notice"><FlaskConical :size="18"/><span>独立回放，不改变工作台库存。三种策略使用相同初始库存、请求序列及 2 辆运输车。距离口径：{{ data.distanceModel }}。</span><button class="text-button" :disabled="matrixRefreshing" @click="refreshMatrix">{{ matrixRefreshing ? '刷新中…' : '刷新矩阵' }}</button></div><article class="panel experiment-config"><div class="experiment-config-title"><div class="section-icon"><FlaskConical :size="24"/></div><div><h2>策略对比实验</h2><p>3 小时 · 1,260 次模拟借车请求 · 可重复多种子回放</p></div></div><button class="experiment-settings-toggle" :aria-expanded="experimentSettings" @click="experimentSettings = !experimentSettings">{{ experimentSettings ? '收起设置' : `种子 ${seed} · 重复 ${runs} 次` }}<ChevronDown :size="15" :class="['chev', { open: experimentSettings }]"/></button><button class="btn primary" :disabled="experimenting || activeTasks.length > 0" @click="runExperiment"><Play :size="16"/>{{ experimenting ? '正在运行…' : '运行对比实验' }}</button><div v-if="experimentSettings" class="experiment-settings-body"><label>随机种子<input type="number" v-model.number="seed" min="0" max="999999" aria-label="随机种子"/></label><label>重复次数<select v-model.number="runs" aria-label="重复次数" :disabled="experimenting"><option v-for="n in [1,3,5,10]" :key="n" :value="n">{{ n }} 次</option></select></label></div></article><p v-if="activeTasks.length" class="inline-warning">请先完成或取消调度任务，确保实验从完整的地面库存开始。</p>
             <article class="panel plan-compare">
               <div class="plan-compare-head"><div><h2>路径规划对比</h2><p>三个场景、每场景按库存 ±5% 各取三个样本，比较「贪心串行」与「OR-Tools 取送路径」的总里程和用时。</p></div><div class="plan-compare-actions"><button v-if="planCompare" class="btn" @click="downloadCompareCsv">导出 CSV</button><button class="btn primary" :disabled="comparing" @click="comparePlans">{{ comparing ? '计算中…' : '运行对比' }}</button></div></div>
-              <div v-if="planCompare" class="plan-compare-table">
-                <table><thead><tr><th>场景</th><th>样本</th><th>贪心串行</th><th>OR-Tools</th><th>里程变化</th></tr></thead><tbody>
-                  <tr v-for="row in planCompare" :key="row.scenario">
-                    <td>{{ scenarioNames[row.scenario] }}</td>
-                    <td>{{ row.samples }}<span v-if="row.legs" class="muted"> · {{ row.legs }} 单</span></td>
-                    <td>{{ row.greedyKm }} km <span class="muted">· {{ row.greedyMinutes }} 分钟</span><small class="range">{{ row.greedyKmMin }}–{{ row.greedyKmMax }} km</small></td>
-                    <td><template v-if="row.ortoolsKm != null">{{ row.ortoolsKm }} km <span class="muted">· {{ row.ortoolsMinutes }} 分钟</span><small class="range">{{ row.ortoolsKmMin }}–{{ row.ortoolsKmMax }} km</small></template><template v-else>不可用</template></td>
-                    <td><strong :class="rowDelta(row) != null && rowDelta(row) <= 0 ? 'good' : ''">{{ rowDelta(row) == null ? '—' : (rowDelta(row) > 0 ? '+' : '') + rowDelta(row) + '%' }}</strong></td>
-                  </tr>
-                </tbody></table>
+              <div v-if="planCompare" class="list-rows compare-rows">
+                <div v-for="row in planCompare" :key="row.scenario" class="list-row compare-row">
+                  <span class="row-icon"><ChartNoAxesCombined :size="18"/></span>
+                  <div class="row-main"><strong>{{ scenarioNames[row.scenario] }}</strong><span>{{ row.samples }} 个样本 · {{ row.legs }} 单<template v-if="row.ortoolsKm != null"> · 贪心 {{ row.greedyKmMin }}–{{ row.greedyKmMax }} km</template></span></div>
+                  <div class="row-side">
+                    <span class="compare-metric">贪心 <b>{{ row.greedyKm }}</b> km</span>
+                    <span class="compare-metric">OR-Tools <b>{{ row.ortoolsKm ?? '—' }}</b> km</span>
+                    <strong :class="['compare-delta', rowDelta(row) != null && rowDelta(row) <= 0 ? 'good' : '']">{{ rowDelta(row) == null ? '—' : (rowDelta(row) > 0 ? '+' : '') + rowDelta(row) + '%' }}</strong>
+                  </div>
+                </div>
                 <div class="compare-chart-legend"><span><i class="legend-dot blue"></i>贪心串行</span><span><i class="legend-dot green"></i>OR-Tools</span><span class="muted">柱高为均值，细线为样本范围</span></div>
                 <svg class="compare-chart" viewBox="0 0 720 250" role="img" aria-label="各场景贪心与 OR-Tools 总里程对比">
                   <line v-for="tick in [0,1,2,3]" :key="tick" x1="40" :x2="700" :y1="200 - tick * 50" :y2="200 - tick * 50" stroke="#f0f0f2"/>
