@@ -581,3 +581,6 @@ td{padding:18px 20px;font-size:13px}
 .map-legend{top:116px;left:16px}
 @media(max-width:480px){.map-panel-full .leaflet-map,.dispatch-map-full .leaflet-map{height:380px}.map-legend-toggle{top:72px}.map-legend{top:108px}}
 .map-overlay-foot{bottom:34px}
+.task-card.is-focused{background:#f7faf9}
+.task-card{cursor:pointer}
+.task-card.is-focused{background:#f4faf7;box-shadow:inset 3px 0 0 var(--accent);border-radius:12px}

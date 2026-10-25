@@ -4,7 +4,7 @@ import { Plus, Minus, LocateFixed } from 'lucide-vue-next'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
-const props = defineProps({ regions: { type: Array, default: () => [] }, selected: Number, tasks: { type: Array, default: () => [] }, minute: { type: Number, default: 0 } })
+const props = defineProps({ regions: { type: Array, default: () => [] }, selected: Number, tasks: { type: Array, default: () => [] }, minute: { type: Number, default: 0 }, focusedTask: String })
 const emit = defineEmits(['select'])
 const container = ref(null)
 const tileError = ref(false)
@@ -189,10 +189,11 @@ function drawLeafletRoutes() {
     const source = props.regions.find(region => region.id === task.sourceId)
     const destination = props.regions.find(region => region.id === task.destinationId)
     if (!isMapped(source) || !isMapped(destination)) continue
-    const emphasized = props.selected === task.sourceId || props.selected === task.destinationId
+    const focused = props.focusTask === task.id
+    const emphasized = focused || props.selected === task.sourceId || props.selected === task.destinationId
     L.polyline([position(source), position(destination)], {
-      color: '#078763', weight: emphasized ? 6 : 4,
-      opacity: task.status === 'RUNNING' ? .22 : (emphasized ? .9 : .45),
+      color: '#078763', weight: focused ? 7 : (emphasized ? 6 : 4),
+      opacity: focused ? 1 : (task.status === 'RUNNING' ? .22 : (emphasized ? .9 : .45)),
       dashArray: task.status === 'PLANNED' ? '9 7' : undefined,
       className: task.status === 'RUNNING' ? 'demo-map-route running' : 'demo-map-route'
     }).bindTooltip('调度任务示意连线，非实际道路路线').addTo(leafletRoutes)
@@ -281,7 +282,8 @@ function drawAmapRoutes() {
     if (!isMapped(source) || !isMapped(destination)) continue
     const cached = routePaths.get(task.id)
     const path = cached || [gcjPosition(source), gcjPosition(destination)]
-    const emphasized = props.selected === task.sourceId || props.selected === task.destinationId
+    const focused = props.focusTask === task.id
+    const emphasized = focused || props.selected === task.sourceId || props.selected === task.destinationId
     const running = task.status === 'RUNNING'
     if (cached) {
       amapRoutes.push(new window.AMap.Polyline({ path, strokeColor: '#ffffff', strokeWeight: 9, strokeOpacity: .95, strokeStyle: 'solid', zIndex: 58 }))
@@ -289,8 +291,8 @@ function drawAmapRoutes() {
     amapRoutes.push(new window.AMap.Polyline({
       path,
       strokeColor: '#078763',
-      strokeWeight: emphasized ? 6 : 4,
-      strokeOpacity: running ? .22 : (emphasized ? .9 : .45),
+      strokeWeight: focused ? 7 : (emphasized ? 6 : 4),
+      strokeOpacity: focused ? 1 : (running ? .22 : (emphasized ? .9 : .45)),
       strokeStyle: task.status === 'PLANNED' ? 'dashed' : 'solid',
       strokeDasharray: task.status === 'PLANNED' ? [9, 7] : undefined,
       showDir: !running && emphasized,
@@ -452,6 +454,21 @@ watch(() => props.tasks, () => {
   if (mapEngine.value === 'amap') { drawAmapRoutes(); drawAmapTrucks() }
   else { drawLeafletRoutes(); drawLeafletTrucks() }
 }, { deep: true })
+watch(() => props.focusTask, id => {
+  if (mapEngine.value === 'amap') {
+    drawAmap(false)
+    const task = props.tasks.find(item => item.id === id)
+    const source = task && props.regions.find(region => region.id === task.sourceId)
+    const destination = task && props.regions.find(region => region.id === task.destinationId)
+    if (source && destination) amap?.panTo(along([gcjPosition(source), gcjPosition(destination)], .5))
+  } else if (map) {
+    drawLeafletMarkers(); drawLeafletRoutes()
+    const task = props.tasks.find(item => item.id === id)
+    const source = task && props.regions.find(region => region.id === task.sourceId)
+    const destination = task && props.regions.find(region => region.id === task.destinationId)
+    if (source && destination) map.panTo(along([position(source), position(destination)], .5))
+  }
+})
 watch(() => props.minute, () => {
   if (mapEngine.value === 'amap') drawAmapTrucks()
   else drawLeafletTrucks()
