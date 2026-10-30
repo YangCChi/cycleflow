@@ -46,23 +46,28 @@ class DispatchServiceTest {
     }
 
     @Test void riderAcceptAndCompleteMovesOneBikeAndPays() {
-        RiderState state = service.riderState();
+        RiderLogin login = service.login("rider01", "123456");
+        assertNotNull(login.token());
+        assertThrows(ResponseStatusException.class, () -> service.login("rider01", "wrong"));
+        RiderState state = service.riderState(login.token());
         assertFalse(state.offers().isEmpty());
         RiderOffer offer = state.offers().get(0);
         int total = service.snapshot().totalBikes();
-        state = service.acceptRide(offer.id());
+        state = service.acceptRide(login.token(), offer.id());
         assertNotNull(state.activeRide());
-        assertThrows(ResponseStatusException.class, () -> service.acceptRide(offer.id()));
-        state = service.completeRide(state.activeRide().id());
+        assertThrows(ResponseStatusException.class, () -> service.acceptRide(login.token(), offer.id()));
+        state = service.completeRide(login.token(), state.activeRide().id());
         assertNull(state.activeRide());
         assertEquals(1, state.completedRides());
-        assertEquals(offer.amountCents(), state.walletCents());
+        assertTrue(state.walletCents() >= offer.amountCents());
         assertEquals(total, service.snapshot().totalBikes());
         assertEquals("COMPLETED", state.history().get(0).status());
         assertEquals(1, service.riderRecords().rides().size());
         assertEquals(offer.amountCents(), service.riderRecords().walletCents());
         assertEquals(4, service.appUsers().size());
         assertTrue(service.appUsers().get(0).walletCents() >= offer.amountCents());
+        service.logout(login.token());
+        assertThrows(ResponseStatusException.class, () -> service.riderState(login.token()));
     }
 
     @Test void pickupAndArrivalConserveBikesAndRejectRepeatedStart() {

@@ -24,11 +24,13 @@ public class ApiController {
     @GetMapping("/experiments/summary") public ExperimentSummary experimentSummary(@RequestParam(defaultValue="42") long seed, @RequestParam(defaultValue="5") int runs) { return service.experimentSummary(seed, runs); }
     @GetMapping("/dispatch/compare") public PlanComparison comparePlans() { return service.planComparison(); }
     @GetMapping("/dispatch/compare/summary") public List<PlanComparisonRow> compareAllPlans() { return service.planComparisonSummary(); }
-    @GetMapping("/rider/state") public RiderState riderState() { return service.riderState(); }
+    @PostMapping("/rider/login") public RiderLogin login(@RequestBody Map<String,String> body) { return service.login(body.get("username"), body.get("password")); }
+    @PostMapping("/rider/logout") public Map<String,Object> logout(@RequestHeader(value="X-Rider-Token", required=false) String token) { service.logout(token); return Map.of("ok", true); }
+    @GetMapping("/rider/state") public RiderState riderState(@RequestHeader(value="X-Rider-Token", required=false) String token) { return service.riderState(token); }
     @GetMapping("/rider/records") public RiderRecords riderRecords() { return service.riderRecords(); }
     @GetMapping("/data/users") public List<AppUser> appUsers() { return service.appUsers(); }
-    @PostMapping("/rider/accept/{offerId}") public RiderState acceptRide(@PathVariable String offerId) { return service.acceptRide(offerId); }
-    @PostMapping("/rider/complete/{rideId}") public RiderState completeRide(@PathVariable String rideId) { return service.completeRide(rideId); }
+    @PostMapping("/rider/accept/{offerId}") public RiderState acceptRide(@RequestHeader(value="X-Rider-Token", required=false) String token, @PathVariable String offerId) { return service.acceptRide(token, offerId); }
+    @PostMapping("/rider/complete/{rideId}") public RiderState completeRide(@RequestHeader(value="X-Rider-Token", required=false) String token, @PathVariable String rideId) { return service.completeRide(token, rideId); }
     @GetMapping("/road-matrix") public RoadMatrixStatus roadMatrix() { return matrix.status(); }
     @PostMapping("/road-matrix/refresh") public RoadMatrixStatus refreshRoadMatrix() { matrix.refreshNow(); return matrix.status(); }
 }

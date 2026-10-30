@@ -42,3 +42,8 @@ CREATE TABLE IF NOT EXISTS rider_users (
  created_minute INT NOT NULL, bonus_cents INT DEFAULT 0
 );
 ALTER TABLE rider_rides ADD COLUMN IF NOT EXISTS user_id INT;
+
+CREATE TABLE IF NOT EXISTS rider_sessions (
+ token VARCHAR(64) PRIMARY KEY, user_id INT NOT NULL, created_minute INT NOT NULL,
+ FOREIGN KEY(user_id) REFERENCES rider_users(id)
+);

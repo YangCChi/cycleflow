@@ -68,3 +68,15 @@ body{margin:0;background:#e9efec;color:var(--rider-ink);font-family:-apple-syste
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .rider-dot{width:15px;height:15px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 6px rgba(20,32,28,.25)}
+.rider-top-actions{display:flex;align-items:center;gap:6px}
+.rider-top-actions .rider-console{border:0;font-family:inherit;cursor:pointer}
+.rider-login{display:flex;flex-direction:column;gap:12px;padding:2px 2px 20px}
+.rider-login h1{margin:0;font-size:18px;font-weight:650}
+.rider-login>p{margin:0;font-size:12px;color:var(--rider-muted)}
+.rider-login label{display:flex;flex-direction:column;gap:6px;font-size:11px;color:var(--rider-muted)}
+.rider-login input{border:1px solid var(--rider-line);border-radius:11px;padding:11px 12px;font-size:14px;font-family:inherit;color:var(--rider-ink);outline:none}
+.rider-login input:focus{border-color:#9fd0ba;box-shadow:0 0 0 3px rgba(10,124,90,.08)}
+.rider-login .rider-btn{margin-top:2px}
+.rider-login-error{margin:0;font-size:12px;color:#b3441f}
+.rider-demo-accounts{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.rider-demo-accounts button{border:1px solid var(--rider-line);background:#f7faf8;color:var(--rider-muted);font-size:11px;border-radius:999px;padding:5px 10px;font-family:inherit;cursor:pointer}

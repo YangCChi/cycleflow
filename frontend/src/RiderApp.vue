@@ -5,6 +5,9 @@ import RiderMap from './RiderMap.vue'
 
 const state = ref(null)
 const regions = ref([])
+const token = ref(localStorage.getItem('cycleflow_rider_token') || '')
+const user = ref(JSON.parse(localStorage.getItem('cycleflow_rider_user') || 'null'))
+const loginName = ref('rider01'), loginPassword = ref('123456'), loginError = ref('')
 const loading = ref(true)
 const error = ref('')
 const busy = ref(false)
@@ -19,6 +22,7 @@ let toastTimer, startY = 0, startExpanded = false, moved = false
 
 const wallet = computed(() => ((state.value?.walletCents || 0) / 100).toFixed(2))
 const offers = computed(() => state.value?.offers || [])
+const loggedIn = computed(() => !!token.value)
 const regionName = id => regions.value.find(region => region.id === id)?.name || '站点 ' + id
 const sheetStyle = computed(() => ({
   transform: `translateY(${dragging.value ? dragY.value : (expanded.value ? 0 : collapsedOffset.value)}px)`,
@@ -59,22 +63,72 @@ function endDrag() {
   else expanded.value = dragY.value < collapsedOffset.value * 0.45
 }
 
-async function api(path, method = 'GET') {
-  const response = await fetch('/api' + path, { method })
+async function api(path, method = 'GET', body) {
+  const headers = {}
+  if (body) headers['Content-Type'] = 'application/json'
+  if (token.value) headers['X-Rider-Token'] = token.value
+  const response = await fetch('/api' + path, { method, headers, body: body ? JSON.stringify(body) : undefined })
   const result = await response.json()
-  if (!response.ok) throw new Error(result.detail || result.message || '操作失败，请稍后重试')
+  if (!response.ok) {
+    const error = new Error(result.detail || result.message || '操作失败，请稍后重试')
+    error.status = response.status
+    throw error
+  }
   return result
+}
+
+function clearSession() {
+  token.value = ''
+  user.value = null
+  state.value = null
+  localStorage.removeItem('cycleflow_rider_token')
+  localStorage.removeItem('cycleflow_rider_user')
 }
 
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [riderState, snapshot] = await Promise.all([api('/rider/state'), api('/state')])
-    state.value = riderState
+    const snapshot = await api('/state')
     regions.value = snapshot.regions
-  } catch (e) { error.value = e.message }
-  finally { loading.value = false; measure() }
+    state.value = token.value ? await api('/rider/state') : null
+  } catch (e) {
+    if (e.status === 401) clearSession()
+    else error.value = e.message
+  } finally {
+    loading.value = false
+    measure()
+    if (!token.value) expanded.value = true
+  }
+}
+
+async function login() {
+  if (busy.value) return
+  busy.value = true
+  loginError.value = ''
+  try {
+    const response = await fetch('/api/rider/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: loginName.value.trim(), password: loginPassword.value }),
+    })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.detail || result.message || '登录失败')
+    token.value = result.token
+    user.value = result.user
+    localStorage.setItem('cycleflow_rider_token', result.token)
+    localStorage.setItem('cycleflow_rider_user', JSON.stringify(result.user))
+    await load()
+    expanded.value = false
+    notify('欢迎回来，' + result.user.nickname)
+  } catch (e) { loginError.value = e.message }
+  finally { busy.value = false }
+}
+
+async function logout() {
+  try { await api('/rider/logout', 'POST') } catch { /* ignore */ }
+  clearSession()
+  expanded.value = true
+  notify('已退出登录')
 }
 
 async function accept(offerId) {
@@ -85,7 +139,7 @@ async function accept(offerId) {
     selectedOffer.value = offerId
     expanded.value = true
     notify('接单成功，骑到目的站点后完成骑行')
-  } catch (e) { notify(e.message) }
+  } catch (e) { if (e.status === 401) clearSession(); else notify(e.message) }
   finally { busy.value = false }
 }
 
@@ -97,7 +151,7 @@ async function complete(rideId) {
     state.value = await api(`/rider/complete/${rideId}`, 'POST')
     selectedOffer.value = ''
     notify(`骑行完成，奖励 ¥${((state.value.walletCents - before) / 100).toFixed(1)} 已到账`)
-  } catch (e) { notify(e.message) }
+  } catch (e) { if (e.status === 401) clearSession(); else notify(e.message) }
   finally { busy.value = false }
 }
 
@@ -116,11 +170,11 @@ onUnmounted(() => { clearTimeout(toastTimer); window.removeEventListener('resize
     <div class="rider-map-fade"></div>
 
     <header class="rider-top">
-      <div class="rider-brand"><span class="rider-mark"><Bike :size="18"/></span><div><strong>交点</strong><small>骑行赚奖励</small></div></div>
-      <a class="rider-console" href="/">控制台 <ArrowUpRight :size="13"/></a>
+      <div class="rider-brand"><span class="rider-mark"><Bike :size="18"/></span><div><strong>交点</strong><small>{{ user ? user.nickname : '骑行赚奖励' }}</small></div></div>
+      <div class="rider-top-actions"><button v-if="loggedIn" class="rider-console" @click="logout">退出</button><a class="rider-console" href="/">控制台 <ArrowUpRight :size="13"/></a></div>
     </header>
 
-    <div class="rider-wallet-chip"><strong>¥{{ wallet }}</strong><span>{{ state?.completedRides || 0 }} 次顺路调度</span></div>
+    <div class="rider-wallet-chip"><template v-if="loggedIn"><strong>¥{{ wallet }}</strong><span>{{ state?.completedRides || 0 }} 次顺路调度</span></template><template v-else><strong>未登录</strong><span>登录后接单赚奖励</span></template></div>
 
     <section class="rider-sheet" :class="{ expanded }" :style="sheetStyle">
       <div class="rider-handle" @pointerdown="startDrag" @pointermove="moveDrag" @pointerup="endDrag" @pointercancel="endDrag">
@@ -130,6 +184,16 @@ onUnmounted(() => { clearTimeout(toastTimer); window.removeEventListener('resize
       <div class="rider-sheet-body">
         <div v-if="loading" class="rider-loading"><div class="rider-skeleton"></div><div class="rider-skeleton short"></div></div>
         <div v-else-if="error" class="rider-error"><CircleAlert :size="28"/><strong>暂时连不上调度服务</strong><p>{{ error }}</p><button class="rider-btn primary" @click="load">重新加载</button></div>
+
+        <div v-else-if="!loggedIn" class="rider-login">
+          <h1>登录后接单赚奖励</h1>
+          <p>演示账户 rider01–rider04，密码统一为 123456。</p>
+          <label>账号<input v-model="loginName" autocomplete="username" placeholder="rider01"/></label>
+          <label>密码<input v-model="loginPassword" type="password" autocomplete="current-password" placeholder="123456" @keyup.enter="login"/></label>
+          <p v-if="loginError" class="rider-login-error">{{ loginError }}</p>
+          <button class="rider-btn primary" :disabled="busy" @click="login">{{ busy ? '登录中…' : '登录' }}</button>
+          <div class="rider-demo-accounts"><button v-for="name in ['rider01','rider02','rider03','rider04']" :key="name" @click="loginName = name; loginPassword = '123456'">{{ name }}</button></div>
+        </div>
 
         <template v-else>
           <div v-if="!state?.activeRide" class="rider-sheet-head"><div><h1>附近可接的调度悬赏</h1><p>把车骑到缺车点，完成后奖励到账</p></div><span>{{ offers.length }}</span></div>

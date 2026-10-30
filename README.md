@@ -44,6 +44,7 @@ AMAP_WEB_KEY=你的Web服务Key
 ## 已实现
 
 - 数据查询：控制台查看演示账户（昵称、账号、手机号、收益、完成单数）、骑行收益流水；密码只展示掩码和「已加密」，库内为 SHA-256 哈希。
+- 用户账户：C 端演示账户 rider01–rider04，统一密码 123456，登录后骑行收益与流水按账号归属；后台数据查询显示脱敏账号、收益和「已加密」状态。
 - 骑行赚奖励（C 端，独立入口 `/rider`）：手机端布局，上半屏高德 JS API 2.0 底图（富余/缺车站点）、下半屏可拖动的悬赏面板；从富余站点取车、骑到缺车站点，完成悬赏后奖励到账。控制台侧栏的「骑行赚奖励」会在新标签打开该页面；任务记录页下方会同步展示骑行奖励记录。
 - 运营总览：一行状态摘要、高德地图（可回退 OpenStreetMap）真实街道底图、补车优先级；场景切换、时钟与播放收进「演示控制」弹窗。
 - 停车区域：真实地图选点联动库存详情与预测入口；支持搜索、类型筛选、修改名称、停车容量及安全库存，保存至后端。窄屏下区域表格改为可直接操作的卡片。
@@ -104,7 +105,7 @@ scripts/    启动与校验脚本
 docs/       规划与验收记录
 ```
 
-API：`GET /api/health`、`GET /api/state`、`GET /api/rider/state`、`POST /api/rider/accept/{offerId}`、`POST /api/rider/complete/{rideId}`、`PATCH /api/regions/{id}`、`GET /api/regions/{id}/forecast`、`POST /api/dispatch/generate`、`POST /api/dispatch/{id}/start`、`POST /api/dispatch/{id}/cancel`、`POST /api/simulation/advance`、`POST /api/simulation/reset`、`GET /api/experiments?seed=42`、`GET /api/experiments/summary?seed=42&runs=5`、`GET /api/road-matrix`、`POST /api/road-matrix/refresh`、`GET /api/dispatch/compare`、`GET /api/dispatch/compare/summary`。
+API：`GET /api/health`、`GET /api/state`、`POST /api/rider/login`、`POST /api/rider/logout`、`GET /api/rider/state`、`POST /api/rider/accept/{offerId}`、`POST /api/rider/complete/{rideId}`、`PATCH /api/regions/{id}`、`GET /api/regions/{id}/forecast`、`POST /api/dispatch/generate`、`POST /api/dispatch/{id}/start`、`POST /api/dispatch/{id}/cancel`、`POST /api/simulation/advance`、`POST /api/simulation/reset`、`GET /api/experiments?seed=42`、`GET /api/experiments/summary?seed=42&runs=5`、`GET /api/road-matrix`、`POST /api/road-matrix/refresh`、`GET /api/dispatch/compare`、`GET /api/dispatch/compare/summary`。
 
 ## 后续方向
 

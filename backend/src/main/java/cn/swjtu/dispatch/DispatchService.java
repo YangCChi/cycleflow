@@ -19,6 +19,7 @@ public class DispatchService {
     @PostConstruct public void init() {
         if (db.queryForObject("SELECT COUNT(*) FROM regions", Integer.class) == 0) reset("morning");
         seedUsers();
+        refreshDemoPasswords();
         db.update("UPDATE rider_rides SET user_id=1 WHERE user_id IS NULL");
     }
 
@@ -32,13 +33,18 @@ public class DispatchService {
         };
         for (Object[] row : users) {
             db.update("INSERT INTO rider_users(id,username,nickname,phone,password_hash,status,created_minute,bonus_cents) VALUES (?,?,?,?,?,?,?,?)",
-                    row[0], row[1], row[2], row[3], demoPasswordHash(row[1].toString()), row[4], row[5], row[6]);
+                    row[0], row[1], row[2], row[3], demoPasswordHash(row[1].toString(), "123456"), row[4], row[5], row[6]);
         }
     }
 
-    private static String demoPasswordHash(String username) {
+    private void refreshDemoPasswords() {
+        List<String> names = db.query("SELECT username FROM rider_users", (rs, row) -> rs.getString(1));
+        for (String name : names) db.update("UPDATE rider_users SET password_hash=? WHERE username=?", demoPasswordHash(name, "123456"), name);
+    }
+
+    private static String demoPasswordHash(String username, String password) {
         try {
-            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(("cycleflow:" + username + ":123456").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(("cycleflow:" + username + ":" + password).getBytes(java.nio.charset.StandardCharsets.UTF_8));
             StringBuilder text = new StringBuilder();
             for (byte b : digest) text.append(String.format("%02x", b));
             return text.toString();
@@ -498,7 +504,26 @@ public class DispatchService {
         });
     }
 
-    public synchronized RiderState riderState() {
+    public synchronized RiderLogin login(String username, String password) {
+        if (username == null || username.isBlank() || password == null || password.isEmpty()) throw error("请输入账号和密码");
+        List<UserRow> rows = db.query("SELECT id,username,password_hash,status FROM rider_users WHERE username=?",
+                (rs, row) -> new UserRow(rs.getInt("id"), rs.getString("username"), rs.getString("password_hash"), rs.getString("status")), username.strip());
+        if (rows.isEmpty()) throw error("账号或密码不正确");
+        UserRow user = rows.get(0);
+        if (!demoPasswordHash(user.username(), password).equals(user.passwordHash())) throw error("账号或密码不正确");
+        if (!user.status().equals("ACTIVE")) throw error("该账号已停用");
+        String token = UUID.randomUUID().toString().replace("-", "");
+        db.update("INSERT INTO rider_sessions(token,user_id,created_minute) VALUES (?,?,?)", token, user.id(), minute());
+        return new RiderLogin(token, appUser(user.id()));
+    }
+
+    public synchronized void logout(String token) {
+        if (token != null && !token.isBlank()) db.update("DELETE FROM rider_sessions WHERE token=?", token);
+    }
+
+    public synchronized RiderState riderState(String token) { return riderStateFor(userId(token)); }
+
+    private RiderState riderStateFor(int userId) {
         Snapshot snapshot = snapshot();
         List<RegionView> sources = snapshot.regions().stream()
                 .filter(view -> view.surplus() > 0)
@@ -521,10 +546,9 @@ public class DispatchService {
             offers.add(new RiderOffer(best.id() + "-" + target.id(), best.id(), target.id(), riderRewardCents(bestKm), round1(bestKm)));
             if (offers.size() >= 4) break;
         }
-        int wallet = db.queryForObject("SELECT COALESCE(SUM(amount_cents),0) FROM rider_rides WHERE status='COMPLETED'", Integer.class);
-        int completed = db.queryForObject("SELECT COUNT(*) FROM rider_rides WHERE status='COMPLETED'", Integer.class);
-        List<RiderRide> history = db.query("SELECT * FROM rider_rides WHERE status='COMPLETED' ORDER BY completed_minute DESC, id DESC LIMIT 8", (rs, row) -> riderRide(rs));
-        return new RiderState(wallet, completed, offers, activeRide(), history);
+        int completed = db.queryForObject("SELECT COUNT(*) FROM rider_rides WHERE user_id=? AND status='COMPLETED'", Integer.class, userId);
+        List<RiderRide> history = db.query("SELECT * FROM rider_rides WHERE user_id=? AND status='COMPLETED' ORDER BY completed_minute DESC, id DESC LIMIT 8", (rs, row) -> riderRide(rs), userId);
+        return new RiderState(userWallet(userId), completed, offers, activeRide(userId), history);
     }
 
     public synchronized RiderRecords riderRecords() {
@@ -534,20 +558,22 @@ public class DispatchService {
         return new RiderRecords(wallet, completed, rides);
     }
 
-    public synchronized RiderState acceptRide(String offerId) {
-        if (activeRide() != null) throw error("已有一笔进行中的骑行，请先完成");
-        RiderOffer offer = riderState().offers().stream().filter(item -> item.id().equals(offerId)).findFirst()
+    public synchronized RiderState acceptRide(String token, String offerId) {
+        int userId = userId(token);
+        if (activeRide(userId) != null) throw error("已有一笔进行中的骑行，请先完成");
+        RiderOffer offer = riderStateFor(userId).offers().stream().filter(item -> item.id().equals(offerId)).findFirst()
                 .orElseThrow(() -> error("该调度悬赏已失效，请刷新"));
         Region source = region(offer.fromId());
         if (source.stock() < 1) throw error("取车点已经没有可用车辆");
         String id = "RIDE-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
         db.update("INSERT INTO rider_rides(id,from_region,to_region,amount_cents,status,created_minute,user_id) VALUES (?,?,?,?,?,?,?)",
-                id, offer.fromId(), offer.toId(), offer.amountCents(), "ACTIVE", minute(), 1);
-        return riderState();
+                id, offer.fromId(), offer.toId(), offer.amountCents(), "ACTIVE", minute(), userId);
+        return riderStateFor(userId);
     }
 
-    public synchronized RiderState completeRide(String rideId) {
-        RiderRide ride = activeRide();
+    public synchronized RiderState completeRide(String token, String rideId) {
+        int userId = userId(token);
+        RiderRide ride = activeRide(userId);
         if (ride == null || !ride.id().equals(rideId)) throw error("没有进行中的骑行");
         return tx.execute(status -> {
             Region source = region(ride.fromId());
@@ -557,14 +583,33 @@ public class DispatchService {
             db.update("UPDATE regions SET stock=stock-1 WHERE id=?", source.id());
             db.update("UPDATE regions SET stock=stock+1 WHERE id=?", destination.id());
             db.update("UPDATE rider_rides SET status='COMPLETED',completed_minute=? WHERE id=?", minute(), ride.id());
-            return riderState();
+            return riderStateFor(userId);
         });
     }
 
-    private RiderRide activeRide() {
-        List<RiderRide> rows = db.query("SELECT * FROM rider_rides WHERE status='ACTIVE' ORDER BY created_minute DESC, id DESC LIMIT 1", (rs, row) -> riderRide(rs));
+    private int userId(String token) {
+        if (token == null || token.isBlank()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "请先登录");
+        List<Integer> ids = db.query("SELECT user_id FROM rider_sessions WHERE token=?", (rs, row) -> rs.getInt(1), token);
+        if (ids.isEmpty()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录已过期，请重新登录");
+        return ids.get(0);
+    }
+
+    private RiderRide activeRide(int userId) {
+        List<RiderRide> rows = db.query("SELECT * FROM rider_rides WHERE user_id=? AND status='ACTIVE' ORDER BY created_minute DESC, id DESC LIMIT 1", (rs, row) -> riderRide(rs), userId);
         return rows.isEmpty() ? null : rows.get(0);
     }
+
+    private int userWallet(int userId) {
+        Integer bonus = db.queryForObject("SELECT bonus_cents FROM rider_users WHERE id=?", Integer.class, userId);
+        Integer earned = db.queryForObject("SELECT COALESCE(SUM(amount_cents),0) FROM rider_rides WHERE user_id=? AND status='COMPLETED'", Integer.class, userId);
+        return (bonus == null ? 0 : bonus) + (earned == null ? 0 : earned);
+    }
+
+    private AppUser appUser(int id) {
+        return appUsers().stream().filter(user -> user.id() == id).findFirst().orElseThrow(() -> error("用户不存在"));
+    }
+
+    private record UserRow(int id, String username, String passwordHash, String status) {}
 
     private static RiderRide riderRide(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new RiderRide(rs.getString("id"), rs.getInt("from_region"), rs.getInt("to_region"), rs.getInt("amount_cents"),
