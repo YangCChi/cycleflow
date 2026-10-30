@@ -18,6 +18,31 @@ public class DispatchService {
 
     @PostConstruct public void init() {
         if (db.queryForObject("SELECT COUNT(*) FROM regions", Integer.class) == 0) reset("morning");
+        seedUsers();
+        db.update("UPDATE rider_rides SET user_id=1 WHERE user_id IS NULL");
+    }
+
+    private void seedUsers() {
+        if (db.queryForObject("SELECT COUNT(*) FROM rider_users", Integer.class) > 0) return;
+        Object[][] users = {
+            {1, "rider01", "陈晓", "138****2011", "ACTIVE", 410, 1280},
+            {2, "rider02", "李然", "139****6620", "ACTIVE", 415, 860},
+            {3, "rider03", "王雨", "137****9081", "ACTIVE", 420, 2400},
+            {4, "rider04", "赵一", "136****5533", "ACTIVE", 430, 320},
+        };
+        for (Object[] row : users) {
+            db.update("INSERT INTO rider_users(id,username,nickname,phone,password_hash,status,created_minute,bonus_cents) VALUES (?,?,?,?,?,?,?,?)",
+                    row[0], row[1], row[2], row[3], demoPasswordHash(row[1].toString()), row[4], row[5], row[6]);
+        }
+    }
+
+    private static String demoPasswordHash(String username) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(("cycleflow:" + username + ":123456").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder text = new StringBuilder();
+            for (byte b : digest) text.append(String.format("%02x", b));
+            return text.toString();
+        } catch (Exception e) { return ""; }
     }
     private void state(String key, Object value) {
         int count = db.update("UPDATE app_state SET state_value=? WHERE state_key=?", value.toString(), key);
@@ -457,6 +482,22 @@ public class DispatchService {
         return kept;
     }
 
+    public synchronized List<AppUser> appUsers() {
+        List<RiderRide> rides = db.query("SELECT * FROM rider_rides", (rs, row) -> riderRide(rs));
+        Map<Integer, List<RiderRide>> byUser = new HashMap<>();
+        for (RiderRide ride : rides) if (ride.userId() != null) byUser.computeIfAbsent(ride.userId(), key -> new ArrayList<>()).add(ride);
+        return db.query("SELECT * FROM rider_users ORDER BY id", (rs, row) -> {
+            int id = rs.getInt("id");
+            List<RiderRide> own = byUser.getOrDefault(id, List.of());
+            int completed = (int) own.stream().filter(ride -> ride.status().equals("COMPLETED")).count();
+            int active = (int) own.stream().filter(ride -> ride.status().equals("ACTIVE")).count();
+            int earned = own.stream().filter(ride -> ride.status().equals("COMPLETED")).mapToInt(RiderRide::amountCents).sum();
+            Integer last = own.stream().filter(ride -> ride.completedMinute() != null).map(RiderRide::completedMinute).max(Integer::compare).orElse(null);
+            return new AppUser(id, rs.getString("username"), rs.getString("nickname"), rs.getString("phone"), rs.getString("status"),
+                    rs.getInt("created_minute"), rs.getInt("bonus_cents") + earned, completed, active, last);
+        });
+    }
+
     public synchronized RiderState riderState() {
         Snapshot snapshot = snapshot();
         List<RegionView> sources = snapshot.regions().stream()
@@ -500,8 +541,8 @@ public class DispatchService {
         Region source = region(offer.fromId());
         if (source.stock() < 1) throw error("取车点已经没有可用车辆");
         String id = "RIDE-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
-        db.update("INSERT INTO rider_rides(id,from_region,to_region,amount_cents,status,created_minute) VALUES (?,?,?,?,?,?)",
-                id, offer.fromId(), offer.toId(), offer.amountCents(), "ACTIVE", minute());
+        db.update("INSERT INTO rider_rides(id,from_region,to_region,amount_cents,status,created_minute,user_id) VALUES (?,?,?,?,?,?,?)",
+                id, offer.fromId(), offer.toId(), offer.amountCents(), "ACTIVE", minute(), 1);
         return riderState();
     }
 
@@ -527,7 +568,7 @@ public class DispatchService {
 
     private static RiderRide riderRide(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new RiderRide(rs.getString("id"), rs.getInt("from_region"), rs.getInt("to_region"), rs.getInt("amount_cents"),
-                rs.getString("status"), rs.getInt("created_minute"), (Integer) rs.getObject("completed_minute"));
+                rs.getString("status"), rs.getInt("created_minute"), (Integer) rs.getObject("completed_minute"), (Integer) rs.getObject("user_id"));
     }
 
     private static int riderRewardCents(double km) {

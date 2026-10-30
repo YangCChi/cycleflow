@@ -703,3 +703,14 @@ dialog.modal[open]::backdrop{animation:backdrop-in .2s ease}
 .rider-records-panel{margin-top:18px}
 .rider-records-panel .table-toolbar>div{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .rider-record-amount{font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap}
+/* data query */
+.data-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.data-stat{padding:16px 18px;display:flex;flex-direction:column;gap:6px}
+.data-stat span{font-size:11px;color:var(--text-3)}
+.data-stat strong{font-size:24px;font-weight:650;letter-spacing:-.02em}
+.data-user-row .row-main strong em{font-style:normal;font-weight:400;color:var(--text-3);font-size:12px;margin-left:4px}
+.data-avatar{border-radius:50%;background:#e9f4ee;color:var(--accent);font-weight:600;display:grid;place-items:center}
+.data-wallet{font-size:14px;font-weight:600;color:var(--accent);white-space:nowrap;margin-left:auto}
+.data-password{font-size:13px;color:var(--text-3);letter-spacing:.08em;white-space:nowrap}
+@media(max-width:800px){.data-stats{grid-template-columns:repeat(2,1fr)}.data-user-row{flex-wrap:wrap}.data-user-row .row-side{margin-left:52px}}
+.table-toolbar>div{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}

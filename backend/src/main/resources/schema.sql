@@ -35,3 +35,10 @@ CREATE TABLE IF NOT EXISTS rider_rides (
  created_minute INT NOT NULL, completed_minute INT,
  FOREIGN KEY(from_region) REFERENCES regions(id), FOREIGN KEY(to_region) REFERENCES regions(id)
 );
+
+CREATE TABLE IF NOT EXISTS rider_users (
+ id INT PRIMARY KEY, username VARCHAR(40) UNIQUE NOT NULL, nickname VARCHAR(60) NOT NULL,
+ phone VARCHAR(20), password_hash VARCHAR(120), status VARCHAR(12) NOT NULL,
+ created_minute INT NOT NULL, bonus_cents INT DEFAULT 0
+);
+ALTER TABLE rider_rides ADD COLUMN IF NOT EXISTS user_id INT;

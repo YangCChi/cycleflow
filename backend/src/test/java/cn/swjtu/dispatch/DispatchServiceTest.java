@@ -61,6 +61,8 @@ class DispatchServiceTest {
         assertEquals("COMPLETED", state.history().get(0).status());
         assertEquals(1, service.riderRecords().rides().size());
         assertEquals(offer.amountCents(), service.riderRecords().walletCents());
+        assertEquals(4, service.appUsers().size());
+        assertTrue(service.appUsers().get(0).walletCents() >= offer.amountCents());
     }
 
     @Test void pickupAndArrivalConserveBikesAndRejectRepeatedStart() {
