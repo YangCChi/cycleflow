@@ -27,6 +27,10 @@ const planCompare = ref(null), comparing = ref(false)
 const regionListOpen = ref(false)
 const focusedTask = ref(null)
 const plannerReady = ref(true)
+const adminToken = ref(localStorage.getItem('cycleflow_admin_token') || '')
+const adminUser = ref(JSON.parse(localStorage.getItem('cycleflow_admin_user') || 'null'))
+const adminName = ref('operator'), adminPassword = ref('123456'), adminError = ref(''), adminBusy = ref(false)
+const adminRoleNames = { ADMIN: '管理员', OPERATOR: '运营', VIEWER: '只读' }
 const riderRecords = ref(null)
 const appUsers = ref([]), userSearch = ref(''), dataLoading = ref(false)
 const filteredUsers = computed(() => appUsers.value.filter(user => !userSearch.value || `${user.nickname}${user.username}${user.phone}`.toLowerCase().includes(userSearch.value.toLowerCase())))
@@ -80,14 +84,53 @@ const orderedTasks = computed(() => {
 let interval, toastTimer, forecastRequest = 0
 
 async function api(path, method = 'GET', body) {
-  const response = await fetch('/api' + path, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined })
+  const headers = {}
+  if (body) headers['Content-Type'] = 'application/json'
+  if (adminToken.value) headers['X-Admin-Token'] = adminToken.value
+  const response = await fetch('/api' + path, { method, headers, body: body ? JSON.stringify(body) : undefined })
   const result = await response.json()
+  if (response.status === 401) clearAdminSession()
   if (!response.ok) throw new Error(result.detail || result.message || '操作失败，请稍后重试')
   return result
+}
+
+function clearAdminSession() {
+  adminToken.value = ''
+  adminUser.value = null
+  localStorage.removeItem('cycleflow_admin_token')
+  localStorage.removeItem('cycleflow_admin_user')
+}
+
+async function loginAdmin() {
+  if (adminBusy.value) return
+  adminBusy.value = true
+  adminError.value = ''
+  try {
+    const response = await fetch('/api/admin/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: adminName.value.trim(), password: adminPassword.value }),
+    })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.detail || result.message || '登录失败')
+    adminToken.value = result.token
+    adminUser.value = result.user
+    localStorage.setItem('cycleflow_admin_token', result.token)
+    localStorage.setItem('cycleflow_admin_user', JSON.stringify(result.user))
+    await load()
+  } catch (e) { adminError.value = e.message }
+  finally { adminBusy.value = false }
+}
+
+async function logoutAdmin() {
+  try { await api('/admin/logout', 'POST') } catch { /* ignore */ }
+  clearAdminSession()
+  loading.value = false
 }
 function notify(message) { toast.value = message; clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.value = '', 4500) }
 async function load() {
   loading.value = true; error.value = ''
+  if (!adminToken.value) { loading.value = false; return }
+  try { adminUser.value = await api('/admin/me') } catch { loading.value = false; return }
   try { data.value = await api('/state') } catch { error.value = '暂时无法连接调度服务，请确认后端已启动后重试。' }
   finally { loading.value = false }
 }
@@ -218,7 +261,7 @@ const forecastMax = computed(() => Math.max(20, ...forecast.value.flatMap(p => [
 const plotLine = key => forecast.value.map((p,i) => `${65+i*85},${255-p[key]/forecastMax.value*200}`).join(' ')
 watch([current, selected, () => data.value?.minute, () => data.value?.scenario], () => { if (current.value === 'forecast') loadForecast() })
 watch(current, () => { if (current.value !== 'dispatch' && current.value !== 'overview') playing.value = false; if (current.value === 'records') loadRiderRecords(); if (current.value === 'data') loadData() })
-onMounted(async () => { window.addEventListener('hashchange', onHash); await load(); if (current.value === 'forecast') loadForecast(); if (current.value === 'records') loadRiderRecords(); if (current.value === 'data') loadData(); if (new URLSearchParams(location.search).has('compare')) comparePlans();
+onMounted(async () => { window.addEventListener('hashchange', onHash); if (!adminToken.value) { loading.value = false; return } await load(); if (current.value === 'forecast') loadForecast(); if (current.value === 'records') loadRiderRecords(); if (current.value === 'data') loadData(); if (new URLSearchParams(location.search).has('compare')) comparePlans();
   checkPlanner(); const plannerTimer = setInterval(() => { checkPlanner(); if (plannerReady.value) clearInterval(plannerTimer) }, 1500);
   if (new URLSearchParams(location.search).has('open')) regionListOpen.value = true;
   if (new URLSearchParams(location.search).has('focus')) { const active = orderedTasks.value.find(t => t.status === 'PLANNED' || t.status === 'RUNNING'); if (active) focusedTask.value = active.id; } interval = setInterval(() => { if (playing.value && !busy.value) advance(playSpeed.value) }, 260) })
@@ -226,13 +269,26 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
 </script>
 
 <template>
-  <div class="app-shell">
+  <div v-if="!adminToken" class="admin-login-screen">
+    <div class="admin-login-card">
+      <div class="admin-login-brand"><span class="admin-login-mark">交</span><div><strong>交点</strong><span>共享单车智能调度</span></div></div>
+      <h1>运营控制台登录</h1>
+      <p class="muted">演示账号 admin / operator / viewer，密码统一为 123456</p>
+      <label>账号<input v-model="adminName" autocomplete="username" @keyup.enter="loginAdmin"/></label>
+      <label>密码<input v-model="adminPassword" type="password" autocomplete="current-password" @keyup.enter="loginAdmin"/></label>
+      <p v-if="adminError" class="form-error" role="alert">{{ adminError }}</p>
+      <button class="btn primary" :disabled="adminBusy" @click="loginAdmin">{{ adminBusy ? '登录中…' : '登录控制台' }}</button>
+      <div class="admin-login-demo"><button v-for="name in ['admin','operator','viewer']" :key="name" @click="adminName = name; adminPassword = '123456'">{{ name }}</button></div>
+      <a class="admin-login-rider" href="/rider">打开用户端 →</a>
+    </div>
+  </div>
+  <div v-else class="app-shell">
     <div v-if="mobileNav" class="sidebar-scrim" @click="mobileNav = false"></div>
     <aside class="sidebar" :class="{ 'is-open': mobileNav }">
       <a class="brand" href="#overview" @click="navigate('overview')"><div class="brand-icon"><Bike :size="27" stroke-width="1.8"/></div><div><strong>交点<span>CycleFlow</span></strong><small>共享单车智能调度</small></div></a>
       <div class="workspace-label">工作空间 <span>01</span></div>
       <nav aria-label="主导航"><button v-for="tab in tabs" :key="tab.id" :class="['nav-item', { active: current === tab.id }]" :aria-current="current === tab.id ? 'page' : undefined" @click="navigate(tab.id)"><component :is="tab.icon" :size="20"/><span>{{ tab.label }}</span><span v-if="tab.id === 'dispatch' && activeTasks.length" class="nav-badge">{{ activeTasks.length }}</span></button><a class="nav-item nav-rider" href="/rider" target="_blank" rel="noopener"><Bike :size="20"/><span>骑行赚奖励</span><ArrowUpRight :size="14" class="nav-rider-arrow"/></a></nav>
-      <div class="sidebar-bottom"><div class="profile"><div class="avatar">交</div><div><strong>演示工作台</strong><span>本地运行 · 单用户</span></div><span class="connection" :class="{ offline: !!error }"></span></div></div>
+      <div class="sidebar-bottom"><div class="profile"><div class="avatar">{{ adminUser?.nickname?.slice(0, 1) || '交' }}</div><div><strong>{{ adminUser?.nickname || '演示工作台' }}</strong><span>{{ adminRoleNames[adminUser?.role] || '本地运行' }} · {{ adminUser?.username || 'demo' }}</span></div><button class="text-button admin-logout" @click="logoutAdmin">退出</button><span class="connection" :class="{ offline: !!error }"></span></div></div>
     </aside>
     <div class="main-shell">
       <header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-button" aria-label="打开导航" @click="mobileNav = !mobileNav"><Menu :size="22"/></button><span>调度工作台</span><ChevronRight :size="14"/><strong>{{ page.label }}</strong></div><div class="topbar-right"><span class="demo-badge"><span></span>仿真演示</span><span class="header-separator"></span><MapPin :size="15"/><span class="location-label">成都 · 犀浦</span></div></header>

@@ -22,6 +22,8 @@ public final class Models {
     public record RiderState(int walletCents, int completedRides, List<RiderOffer> offers, RiderRide activeRide, List<RiderRide> history) {}
     public record RiderRecords(int walletCents, int completedRides, List<RiderRide> rides) {}
     public record RiderLogin(String token, AppUser user) {}
+    public record AdminUser(int id, String username, String nickname, String role) {}
+    public record AdminLogin(String token, AdminUser user) {}
     public record AppUser(int id, String username, String nickname, String phone, String status, int createdMinute,
                           int walletCents, int completedRides, int activeRides, Integer lastRideMinute) {}
     public record RegionUpdate(String name, Integer capacity, Integer safetyStock) {}

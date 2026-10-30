@@ -20,6 +20,8 @@ public class DispatchService {
         if (db.queryForObject("SELECT COUNT(*) FROM regions", Integer.class) == 0) reset("morning");
         seedUsers();
         refreshDemoPasswords();
+        seedAdmins();
+        refreshAdminPasswords();
         db.update("UPDATE rider_rides SET user_id=1 WHERE user_id IS NULL");
     }
 
@@ -40,6 +42,59 @@ public class DispatchService {
     private void refreshDemoPasswords() {
         List<String> names = db.query("SELECT username FROM rider_users", (rs, row) -> rs.getString(1));
         for (String name : names) db.update("UPDATE rider_users SET password_hash=? WHERE username=?", demoPasswordHash(name, "123456"), name);
+    }
+
+    private void seedAdmins() {
+        if (db.queryForObject("SELECT COUNT(*) FROM admin_users", Integer.class) > 0) return;
+        Object[][] admins = {
+            {1, "admin", "平台管理员", "ADMIN"},
+            {2, "operator", "调度运营", "OPERATOR"},
+            {3, "viewer", "只读观察", "VIEWER"},
+        };
+        for (Object[] row : admins) {
+            db.update("INSERT INTO admin_users(id,username,nickname,password_hash,role,status) VALUES (?,?,?,?,?,?)",
+                    row[0], row[1], row[2], demoPasswordHash(row[1].toString(), "123456"), row[3], "ACTIVE");
+        }
+    }
+
+    private void refreshAdminPasswords() {
+        List<String> names = db.query("SELECT username FROM admin_users", (rs, row) -> rs.getString(1));
+        for (String name : names) db.update("UPDATE admin_users SET password_hash=? WHERE username=?", demoPasswordHash(name, "123456"), name);
+    }
+
+    public synchronized AdminLogin adminLogin(String username, String password) {
+        if (username == null || username.isBlank() || password == null || password.isEmpty()) throw error("请输入账号和密码");
+        List<AdminRow> rows = db.query("SELECT id,username,password_hash,role,status FROM admin_users WHERE username=?",
+                (rs, row) -> new AdminRow(rs.getInt("id"), rs.getString("username"), rs.getString("password_hash"), rs.getString("role"), rs.getString("status")), username.strip());
+        if (rows.isEmpty()) throw error("账号或密码不正确");
+        AdminRow admin = rows.get(0);
+        if (!demoPasswordHash(admin.username(), password).equals(admin.passwordHash())) throw error("账号或密码不正确");
+        if (!admin.status().equals("ACTIVE")) throw error("该账号已停用");
+        String token = UUID.randomUUID().toString().replace("-", "");
+        db.update("INSERT INTO admin_sessions(token,admin_id,created_minute) VALUES (?,?,?)", token, admin.id(), minute());
+        return new AdminLogin(token, new AdminUser(admin.id(), admin.username(), admin.nickname(), admin.role()));
+    }
+
+    public synchronized void adminLogout(String token) {
+        if (token != null && !token.isBlank()) db.update("DELETE FROM admin_sessions WHERE token=?", token);
+    }
+
+    public AdminUser admin(String token) {
+        if (token == null || token.isBlank()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "请先登录控制台");
+        List<AdminUser> users = db.query("SELECT id,username,nickname,role FROM admin_users a JOIN admin_sessions s ON s.admin_id=a.id WHERE s.token=?",
+                (rs, row) -> new AdminUser(rs.getInt("id"), rs.getString("username"), rs.getString("nickname"), rs.getString("role")), token);
+        if (users.isEmpty()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "登录已过期，请重新登录");
+        return users.get(0);
+    }
+
+    public AdminUser requireOperator(String token) {
+        AdminUser admin = admin(token);
+        if (admin.role().equals("VIEWER")) throw new ResponseStatusException(HttpStatus.FORBIDDEN, "只读账号不能执行该操作");
+        return admin;
+    }
+
+    private record AdminRow(int id, String username, String passwordHash, String role, String status) {
+        String nickname() { return switch (role) { case "ADMIN" -> "平台管理员"; case "OPERATOR" -> "调度运营"; default -> "只读观察"; }; }
     }
 
     private static String demoPasswordHash(String username, String password) {

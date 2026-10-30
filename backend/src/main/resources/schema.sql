@@ -47,3 +47,12 @@ CREATE TABLE IF NOT EXISTS rider_sessions (
  token VARCHAR(64) PRIMARY KEY, user_id INT NOT NULL, created_minute INT NOT NULL,
  FOREIGN KEY(user_id) REFERENCES rider_users(id)
 );
+
+CREATE TABLE IF NOT EXISTS admin_users (
+ id INT PRIMARY KEY, username VARCHAR(40) UNIQUE NOT NULL, nickname VARCHAR(60) NOT NULL,
+ password_hash VARCHAR(120) NOT NULL, role VARCHAR(12) NOT NULL, status VARCHAR(12) NOT NULL
+);
+CREATE TABLE IF NOT EXISTS admin_sessions (
+ token VARCHAR(64) PRIMARY KEY, admin_id INT NOT NULL, created_minute INT NOT NULL,
+ FOREIGN KEY(admin_id) REFERENCES admin_users(id)
+);

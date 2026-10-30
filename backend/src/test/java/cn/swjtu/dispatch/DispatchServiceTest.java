@@ -45,6 +45,15 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.advance(61));
     }
 
+    @Test void adminRolesGateMutations() {
+        AdminLogin viewer = service.adminLogin("viewer", "123456");
+        assertThrows(ResponseStatusException.class, () -> service.requireOperator(viewer.token()));
+        AdminLogin operator = service.adminLogin("operator", "123456");
+        assertEquals("OPERATOR", service.requireOperator(operator.token()).role());
+        service.adminLogout(operator.token());
+        assertThrows(ResponseStatusException.class, () -> service.requireOperator(operator.token()));
+    }
+
     @Test void riderAcceptAndCompleteMovesOneBikeAndPays() {
         RiderLogin login = service.login("rider01", "123456");
         assertNotNull(login.token());
