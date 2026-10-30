@@ -132,7 +132,7 @@ onUnmounted(() => { clearTimeout(toastTimer); window.removeEventListener('resize
         <div v-else-if="error" class="rider-error"><CircleAlert :size="28"/><strong>暂时连不上调度服务</strong><p>{{ error }}</p><button class="rider-btn primary" @click="load">重新加载</button></div>
 
         <template v-else>
-          <div class="rider-sheet-head"><div><h1>附近可接的调度悬赏</h1><p>把车骑到缺车点，完成后奖励到账</p></div><span>{{ offers.length }}</span></div>
+          <div v-if="!state?.activeRide" class="rider-sheet-head"><div><h1>附近可接的调度悬赏</h1><p>把车骑到缺车点，完成后奖励到账</p></div><span>{{ offers.length }}</span></div>
 
           <article v-if="state?.activeRide" class="rider-active">
             <div class="rider-active-head"><span>进行中</span><strong>+¥{{ (state.activeRide.amountCents / 100).toFixed(1) }}</strong></div>
@@ -140,8 +140,8 @@ onUnmounted(() => { clearTimeout(toastTimer); window.removeEventListener('resize
             <button class="rider-btn primary" :disabled="busy" @click="complete(state.activeRide.id)"><Check :size="15"/>{{ busy ? '处理中…' : '完成骑行并领取奖励' }}</button>
           </article>
 
-          <div v-if="!offers.length" class="rider-empty"><CheckCircle2 :size="26"/><strong>当前供需已平衡</strong><p>稍后再来看看</p></div>
-          <div v-else class="rider-offers">
+          <div v-if="!state?.activeRide && !offers.length" class="rider-empty"><CheckCircle2 :size="26"/><strong>当前供需已平衡</strong><p>稍后再来看看</p></div>
+          <div v-else-if="!state?.activeRide" class="rider-offers">
             <article v-for="offer in offers" :key="offer.id" :class="['rider-offer', { selected: selectedOffer === offer.id }]" @click="selectOffer(offer)">
               <div class="rider-route"><strong>{{ regionName(offer.fromId) }}</strong><ArrowRight :size="14"/><strong>{{ regionName(offer.toId) }}</strong></div>
               <div class="rider-offer-foot"><span>{{ offer.km.toFixed(1) }} km</span><strong>+¥{{ (offer.amountCents / 100).toFixed(1) }}</strong></div>

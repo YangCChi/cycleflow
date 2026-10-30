@@ -700,3 +700,6 @@ dialog.modal[open]::backdrop{animation:backdrop-in .2s ease}
 
 .nav-rider{text-decoration:none;color:var(--accent)}
 .nav-rider .nav-rider-arrow{margin-left:auto;opacity:.65}
+.rider-records-panel{margin-top:18px}
+.rider-records-panel .table-toolbar>div{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.rider-record-amount{font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap}

@@ -25,6 +25,7 @@ public class ApiController {
     @GetMapping("/dispatch/compare") public PlanComparison comparePlans() { return service.planComparison(); }
     @GetMapping("/dispatch/compare/summary") public List<PlanComparisonRow> compareAllPlans() { return service.planComparisonSummary(); }
     @GetMapping("/rider/state") public RiderState riderState() { return service.riderState(); }
+    @GetMapping("/rider/records") public RiderRecords riderRecords() { return service.riderRecords(); }
     @PostMapping("/rider/accept/{offerId}") public RiderState acceptRide(@PathVariable String offerId) { return service.acceptRide(offerId); }
     @PostMapping("/rider/complete/{rideId}") public RiderState completeRide(@PathVariable String rideId) { return service.completeRide(rideId); }
     @GetMapping("/road-matrix") public RoadMatrixStatus roadMatrix() { return matrix.status(); }

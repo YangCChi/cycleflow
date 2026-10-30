@@ -486,6 +486,13 @@ public class DispatchService {
         return new RiderState(wallet, completed, offers, activeRide(), history);
     }
 
+    public synchronized RiderRecords riderRecords() {
+        int wallet = db.queryForObject("SELECT COALESCE(SUM(amount_cents),0) FROM rider_rides WHERE status='COMPLETED'", Integer.class);
+        int completed = db.queryForObject("SELECT COUNT(*) FROM rider_rides WHERE status='COMPLETED'", Integer.class);
+        List<RiderRide> rides = db.query("SELECT * FROM rider_rides ORDER BY created_minute DESC, id DESC LIMIT 100", (rs, row) -> riderRide(rs));
+        return new RiderRecords(wallet, completed, rides);
+    }
+
     public synchronized RiderState acceptRide(String offerId) {
         if (activeRide() != null) throw error("已有一笔进行中的骑行，请先完成");
         RiderOffer offer = riderState().offers().stream().filter(item -> item.id().equals(offerId)).findFirst()

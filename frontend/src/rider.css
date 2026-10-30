@@ -4,7 +4,7 @@ html,body,#rider{height:100%}
 body{margin:0;background:#e9efec;color:var(--rider-ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
 #rider{display:flex;justify-content:center;align-items:stretch}
 .rider-app{position:relative;width:100%;max-width:460px;height:100dvh;overflow:hidden;background:#dfe7e2}
-.rider-map{position:absolute;inset:0;z-index:0}
+.rider-map{position:absolute;top:0;left:0;right:0;height:52%;z-index:0}
 .leaflet-container{background:#e6ece8;font-family:inherit}
 .rider-map-fade{position:absolute;left:0;right:0;top:0;height:170px;background:linear-gradient(rgba(255,255,255,.75),rgba(255,255,255,0));pointer-events:none;z-index:400}
 .rider-top{position:absolute;top:0;left:0;right:0;z-index:500;display:flex;align-items:center;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 16px) 18px 0}
@@ -67,3 +67,4 @@ body{margin:0;background:#e9efec;color:var(--rider-ink);font-family:-apple-syste
   .rider-sheet{border-radius:26px 26px 0 0}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.rider-dot{width:15px;height:15px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 6px rgba(20,32,28,.25)}

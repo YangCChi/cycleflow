@@ -26,6 +26,7 @@ const planCompare = ref(null), comparing = ref(false)
 const regionListOpen = ref(false)
 const focusedTask = ref(null)
 const plannerReady = ref(true)
+const riderRecords = ref(null)
 const playSpeed = ref(1)
 const followTruck = ref(false)
 const editDialog = ref(null), resetDialog = ref(null), infoDialog = ref(null), demoDialog = ref(null), edit = ref({}), pendingScenario = ref('morning'), formError = ref('')
@@ -135,6 +136,10 @@ async function mutate(path, body, message, method = 'POST') {
 }
 function navigate(id) { current.value = id; location.hash = id; mobileNav.value = false }
 function onHash() { const id = hashId(); if (tabs.some(t => t.id === id)) current.value = id }
+async function loadRiderRecords() {
+  try { riderRecords.value = await api('/rider/records') } catch { /* keep last */ }
+}
+
 async function generate() { if (await mutate('/dispatch/generate', null, '已生成调度方案，车辆与停车容量已检查')) navigate('dispatch') }
 async function advance(step = 5) { await mutate(`/simulation/advance?minutes=${step}`); if (!tasks.value.some(t => t.status === 'RUNNING')) playing.value = false }
 function togglePlay() {
@@ -197,8 +202,8 @@ function downloadTasksCsv() {
 const forecastMax = computed(() => Math.max(20, ...forecast.value.flatMap(p => [p.outflow, p.inflow])) )
 const plotLine = key => forecast.value.map((p,i) => `${65+i*85},${255-p[key]/forecastMax.value*200}`).join(' ')
 watch([current, selected, () => data.value?.minute, () => data.value?.scenario], () => { if (current.value === 'forecast') loadForecast() })
-watch(current, () => { if (current.value !== 'dispatch' && current.value !== 'overview') playing.value = false })
-onMounted(async () => { window.addEventListener('hashchange', onHash); await load(); if (current.value === 'forecast') loadForecast(); if (new URLSearchParams(location.search).has('compare')) comparePlans();
+watch(current, () => { if (current.value !== 'dispatch' && current.value !== 'overview') playing.value = false; if (current.value === 'records') loadRiderRecords() })
+onMounted(async () => { window.addEventListener('hashchange', onHash); await load(); if (current.value === 'forecast') loadForecast(); if (current.value === 'records') loadRiderRecords(); if (new URLSearchParams(location.search).has('compare')) comparePlans();
   checkPlanner(); const plannerTimer = setInterval(() => { checkPlanner(); if (plannerReady.value) clearInterval(plannerTimer) }, 1500);
   if (new URLSearchParams(location.search).has('open')) regionListOpen.value = true;
   if (new URLSearchParams(location.search).has('focus')) { const active = orderedTasks.value.find(t => t.status === 'PLANNED' || t.status === 'RUNNING'); if (active) focusedTask.value = active.id; } interval = setInterval(() => { if (playing.value && !busy.value) advance(playSpeed.value) }, 260) })
@@ -332,6 +337,23 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
                 <p v-if="!filteredTasks.length" class="empty-table">没有符合条件的任务记录。生成调度方案并推进时间后，这里会出现完整轨迹。</p>
               </div>
               <div class="table-footer"><Info :size="16"/>记录由后端持久化；时间随工作台 +5 分钟推进，重置场景会清除全部任务。</div>
+            </article>
+
+            <article class="panel table-panel rider-records-panel">
+              <div class="table-toolbar">
+                <div><strong>骑行奖励记录</strong><span class="table-count">累计发放 ¥{{ ((riderRecords?.walletCents || 0) / 100).toFixed(2) }} · {{ riderRecords?.completedRides || 0 }} 次完成</span></div>
+                <button class="text-button" @click="loadRiderRecords">刷新</button>
+              </div>
+              <div class="list-rows">
+                <div v-for="ride in riderRecords?.rides || []" :key="ride.id" class="list-row">
+                  <span class="row-icon"><Bike :size="18"/></span>
+                  <div class="row-main"><strong>{{ regionName(ride.fromId) }} → {{ regionName(ride.toId) }}</strong><span>{{ time(ride.createdMinute) }} 接单<template v-if="ride.completedMinute != null"> · {{ time(ride.completedMinute) }} 完成</template></span></div>
+                  <span class="rider-record-amount">+¥{{ (ride.amountCents / 100).toFixed(1) }}</span>
+                  <span :class="['task-status', ride.status === 'COMPLETED' ? 'completed' : 'running']">{{ ride.status === 'COMPLETED' ? '已发放' : '进行中' }}</span>
+                </div>
+                <p v-if="!riderRecords?.rides.length" class="empty-table">还没有普通用户接单。打开用户端 /rider 接一单后，这里会出现奖励记录。</p>
+              </div>
+              <div class="table-footer"><Info :size="16"/>来自 C 端「骑行赚奖励」；金额为演示币，完成时从取车点扣 1 辆、目的站点加 1 辆。</div>
             </article>
           </template>
 

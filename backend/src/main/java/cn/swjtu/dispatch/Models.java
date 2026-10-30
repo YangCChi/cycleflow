@@ -20,6 +20,7 @@ public final class Models {
     public record RiderOffer(String id, int fromId, int toId, int amountCents, double km) {}
     public record RiderRide(String id, int fromId, int toId, int amountCents, String status, int createdMinute, Integer completedMinute) {}
     public record RiderState(int walletCents, int completedRides, List<RiderOffer> offers, RiderRide activeRide, List<RiderRide> history) {}
+    public record RiderRecords(int walletCents, int completedRides, List<RiderRide> rides) {}
     public record RegionUpdate(String name, Integer capacity, Integer safetyStock) {}
     public record Experiment(String strategy, int requested, int served, double serviceRate,
                              int shortageMinutes, double distance, int moved, int endingTotal) {}
