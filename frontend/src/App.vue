@@ -10,7 +10,6 @@ const tabs = [
   { id: 'forecast', label: '需求预测', icon: ChartNoAxesCombined, en: 'FORECAST' },
   { id: 'dispatch', label: '智能调度', icon: Route, en: 'DISPATCH' },
   { id: 'records', label: '任务记录', icon: History, en: 'RECORDS' },
-  { id: 'rider', label: '骑行赚奖励', icon: Bike, en: 'RIDER' },
   { id: 'experiments', label: '仿真实验', icon: FlaskConical, en: 'EXPERIMENT' },
 ]
 const hashId = () => location.hash.replace(/^#\/?/, '')
@@ -29,8 +28,6 @@ const focusedTask = ref(null)
 const plannerReady = ref(true)
 const playSpeed = ref(1)
 const followTruck = ref(false)
-const rider = ref(null), riderBusy = ref(false)
-const riderWallet = computed(() => ((rider.value?.walletCents || 0) / 100).toFixed(2))
 const editDialog = ref(null), resetDialog = ref(null), infoDialog = ref(null), demoDialog = ref(null), edit = ref({}), pendingScenario = ref('morning'), formError = ref('')
 const scenarioNames = { morning: '工作日早高峰', evening: '工作日晚高峰', weekend: '周末出行' }
 const typeNames = { gate: '校门接驳', metro: '轨道接驳', residential: '居住区域', commercial: '商业区域' }
@@ -138,33 +135,6 @@ async function mutate(path, body, message, method = 'POST') {
 }
 function navigate(id) { current.value = id; location.hash = id; mobileNav.value = false }
 function onHash() { const id = hashId(); if (tabs.some(t => t.id === id)) current.value = id }
-async function loadRider() {
-  if (!data.value) return
-  try { rider.value = await api('/rider/state') } catch { /* keep last state */ }
-}
-
-async function acceptRide(offerId) {
-  if (riderBusy.value) return
-  riderBusy.value = true
-  try {
-    rider.value = await api(`/rider/accept/${offerId}`, 'POST')
-    notify('接单成功，到达目的地后点击「完成骑行」领取奖励')
-  } catch (e) { notify(e.message) }
-  finally { riderBusy.value = false }
-}
-
-async function completeRide(rideId) {
-  if (riderBusy.value) return
-  riderBusy.value = true
-  try {
-    const before = rider.value?.walletCents || 0
-    rider.value = await api(`/rider/complete/${rideId}`, 'POST')
-    notify(`骑行完成，奖励 ¥${((rider.value.walletCents - before) / 100).toFixed(1)} 已到账`)
-    await load()
-  } catch (e) { notify(e.message) }
-  finally { riderBusy.value = false }
-}
-
 async function generate() { if (await mutate('/dispatch/generate', null, '已生成调度方案，车辆与停车容量已检查')) navigate('dispatch') }
 async function advance(step = 5) { await mutate(`/simulation/advance?minutes=${step}`); if (!tasks.value.some(t => t.status === 'RUNNING')) playing.value = false }
 function togglePlay() {
@@ -227,9 +197,8 @@ function downloadTasksCsv() {
 const forecastMax = computed(() => Math.max(20, ...forecast.value.flatMap(p => [p.outflow, p.inflow])) )
 const plotLine = key => forecast.value.map((p,i) => `${65+i*85},${255-p[key]/forecastMax.value*200}`).join(' ')
 watch([current, selected, () => data.value?.minute, () => data.value?.scenario], () => { if (current.value === 'forecast') loadForecast() })
-watch(current, () => { if (current.value !== 'dispatch' && current.value !== 'overview') playing.value = false; if (current.value === 'rider') loadRider() })
-watch(() => data.value?.minute, () => { if (current.value === 'rider') loadRider() })
-onMounted(async () => { window.addEventListener('hashchange', onHash); await load(); if (current.value === 'forecast') loadForecast(); if (current.value === 'rider') loadRider(); if (new URLSearchParams(location.search).has('compare')) comparePlans();
+watch(current, () => { if (current.value !== 'dispatch' && current.value !== 'overview') playing.value = false })
+onMounted(async () => { window.addEventListener('hashchange', onHash); await load(); if (current.value === 'forecast') loadForecast(); if (new URLSearchParams(location.search).has('compare')) comparePlans();
   checkPlanner(); const plannerTimer = setInterval(() => { checkPlanner(); if (plannerReady.value) clearInterval(plannerTimer) }, 1500);
   if (new URLSearchParams(location.search).has('open')) regionListOpen.value = true;
   if (new URLSearchParams(location.search).has('focus')) { const active = orderedTasks.value.find(t => t.status === 'PLANNED' || t.status === 'RUNNING'); if (active) focusedTask.value = active.id; } interval = setInterval(() => { if (playing.value && !busy.value) advance(playSpeed.value) }, 260) })
@@ -242,7 +211,7 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
     <aside class="sidebar" :class="{ 'is-open': mobileNav }">
       <a class="brand" href="#overview" @click="navigate('overview')"><div class="brand-icon"><Bike :size="27" stroke-width="1.8"/></div><div><strong>交点<span>CycleFlow</span></strong><small>共享单车智能调度</small></div></a>
       <div class="workspace-label">工作空间 <span>01</span></div>
-      <nav aria-label="主导航"><button v-for="tab in tabs" :key="tab.id" :class="['nav-item', { active: current === tab.id }]" :aria-current="current === tab.id ? 'page' : undefined" @click="navigate(tab.id)"><component :is="tab.icon" :size="20"/><span>{{ tab.label }}</span><span v-if="tab.id === 'dispatch' && activeTasks.length" class="nav-badge">{{ activeTasks.length }}</span></button></nav>
+      <nav aria-label="主导航"><button v-for="tab in tabs" :key="tab.id" :class="['nav-item', { active: current === tab.id }]" :aria-current="current === tab.id ? 'page' : undefined" @click="navigate(tab.id)"><component :is="tab.icon" :size="20"/><span>{{ tab.label }}</span><span v-if="tab.id === 'dispatch' && activeTasks.length" class="nav-badge">{{ activeTasks.length }}</span></button><a class="nav-item nav-rider" href="/rider" target="_blank" rel="noopener"><Bike :size="20"/><span>骑行赚奖励</span><ArrowUpRight :size="14" class="nav-rider-arrow"/></a></nav>
       <div class="sidebar-bottom"><div class="profile"><div class="avatar">交</div><div><strong>演示工作台</strong><span>本地运行 · 单用户</span></div><span class="connection" :class="{ offline: !!error }"></span></div></div>
     </aside>
     <div class="main-shell">
@@ -260,7 +229,7 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
           <transition name="page" mode="out-in">
             <div :key="current" class="page-view">
               <div v-if="!plannerReady" class="warming-banner">路径求解器正在预热，生成方案与运行实验暂时不可用，通常需要 10–20 秒。</div>
-          <section class="page-heading"><div><span class="eyebrow">{{ page.en }}</span><h1>{{ page.label }}<span v-if="current === 'overview'" class="heading-dot"></span></h1><p>{{ { overview: '从供需变化，到每一次精准调度。', regions: '管理服务区域的停车容量与安全库存。', forecast: '提前看见需求，安排下一次补车。', dispatch: '将补车建议转化为可执行的搬运任务。', records: '查看每一次补车从生成到送达的完整记录。', rider: '把富余站点的车骑到缺车点，顺路赚取奖励。', experiments: '用相同的出行请求，比较不同调度策略。' }[current] }}</p></div><div class="heading-actions"><template v-if="current === 'dispatch'"><button class="btn" :disabled="busy" @click="requestReset()"><RefreshCw :size="16"/>重置场景</button><button class="btn primary" :disabled="busy || !plannerReady" @click="generate"><Route :size="17"/>{{ busy ? '处理中…' : '生成调度方案' }}</button></template><template v-else-if="current === 'overview'"><button class="btn primary" :disabled="busy || !plannerReady" @click="generate"><Route :size="17"/>{{ busy ? '处理中…' : '生成调度方案' }}</button></template><template v-else-if="current === 'records'"><button class="btn" @click="downloadTasksCsv"><Download :size="16"/>导出任务 CSV</button></template><button v-else class="btn" @click="infoDialog.showModal()"><Info :size="16"/>数据说明</button></div></section>
+          <section class="page-heading"><div><span class="eyebrow">{{ page.en }}</span><h1>{{ page.label }}<span v-if="current === 'overview'" class="heading-dot"></span></h1><p>{{ { overview: '从供需变化，到每一次精准调度。', regions: '管理服务区域的停车容量与安全库存。', forecast: '提前看见需求，安排下一次补车。', dispatch: '将补车建议转化为可执行的搬运任务。', records: '查看每一次补车从生成到送达的完整记录。', experiments: '用相同的出行请求，比较不同调度策略。' }[current] }}</p></div><div class="heading-actions"><template v-if="current === 'dispatch'"><button class="btn" :disabled="busy" @click="requestReset()"><RefreshCw :size="16"/>重置场景</button><button class="btn primary" :disabled="busy || !plannerReady" @click="generate"><Route :size="17"/>{{ busy ? '处理中…' : '生成调度方案' }}</button></template><template v-else-if="current === 'overview'"><button class="btn primary" :disabled="busy || !plannerReady" @click="generate"><Route :size="17"/>{{ busy ? '处理中…' : '生成调度方案' }}</button></template><template v-else-if="current === 'records'"><button class="btn" @click="downloadTasksCsv"><Download :size="16"/>导出任务 CSV</button></template><button v-else class="btn" @click="infoDialog.showModal()"><Info :size="16"/>数据说明</button></div></section>
 
           <template v-if="current === 'overview'">
             <div class="status-strip">
@@ -364,47 +333,6 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
               </div>
               <div class="table-footer"><Info :size="16"/>记录由后端持久化；时间随工作台 +5 分钟推进，重置场景会清除全部任务。</div>
             </article>
-          </template>
-
-          <template v-if="current === 'rider'">
-            <div class="rider-hero">
-              <article class="rider-wallet-card">
-                <span class="eyebrow">MY REWARDS</span>
-                <div class="rider-balance">¥{{ riderWallet }}</div>
-                <p>累计完成 {{ rider?.completedRides || 0 }} 次顺路调度</p>
-              </article>
-              <article class="rider-intro">
-                <span class="rider-icon"><Bike :size="26"/></span>
-                <div><strong>把车骑到需要的地方</strong><p>从富余站点取车，骑到缺车站点还车，完成后奖励自动到账。</p></div>
-              </article>
-            </div>
-
-            <article v-if="rider?.activeRide" class="panel rider-active">
-              <div class="rider-active-head"><span class="eyebrow">RIDE IN PROGRESS</span><strong>+¥{{ (rider.activeRide.amountCents / 100).toFixed(1) }}</strong></div>
-              <div class="rider-offer-route"><strong>{{ regionName(rider.activeRide.fromId) }}</strong><ArrowRight :size="16"/><strong>{{ regionName(rider.activeRide.toId) }}</strong></div>
-              <p class="muted">到达 {{ regionName(rider.activeRide.toId) }} 后还车，奖励立即到账。</p>
-              <button class="btn primary" :disabled="riderBusy" @click="completeRide(rider.activeRide.id)"><Check :size="16"/>{{ riderBusy ? '处理中…' : '完成骑行并领取奖励' }}</button>
-            </article>
-
-            <div class="rider-section-head"><h2>附近可接的调度悬赏</h2><span>{{ rider?.offers.length || 0 }} 个待接</span></div>
-            <div v-if="!rider" class="panel task-empty"><Bike :size="38"/><h2>正在读取悬赏</h2><p>稍候…</p></div>
-            <div v-else-if="!rider.offers.length" class="panel task-empty"><CheckCircle2 :size="38"/><h2>当前供需已平衡</h2><p>没有需要顺路搬运的车辆，稍后再来看看。</p></div>
-            <div v-else class="rider-offers">
-              <button v-for="offer in rider.offers" :key="offer.id" class="panel rider-offer" :disabled="riderBusy || !!rider.activeRide" @click="acceptRide(offer.id)">
-                <div class="rider-offer-route"><strong>{{ regionName(offer.fromId) }}</strong><ArrowRight :size="15"/><strong>{{ regionName(offer.toId) }}</strong></div>
-                <div class="rider-offer-meta"><span>{{ offer.km.toFixed(1) }} km · 约 {{ Math.max(5, Math.round(offer.km / 12 * 60)) }} 分钟</span><span class="rider-reward">+¥{{ (offer.amountCents / 100).toFixed(1) }}</span></div>
-              </button>
-            </div>
-
-            <template v-if="rider?.history.length">
-              <div class="rider-section-head"><h2>最近完成</h2><span>{{ rider.completedRides }} 次</span></div>
-              <div class="panel rider-history">
-                <div v-for="ride in rider.history" :key="ride.id" class="rider-history-row">
-                  <span>{{ regionName(ride.fromId) }} <ArrowRight :size="12"/> {{ regionName(ride.toId) }}</span>
-                  <span class="rider-reward">+¥{{ (ride.amountCents / 100).toFixed(1) }}</span>
-                </div>
-              </div>
-            </template>
           </template>
 
           <template v-if="current === 'experiments'">
