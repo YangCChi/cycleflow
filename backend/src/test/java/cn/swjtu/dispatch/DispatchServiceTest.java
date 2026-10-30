@@ -45,6 +45,22 @@ class DispatchServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.advance(61));
     }
 
+    @Test void riderAcceptAndCompleteMovesOneBikeAndPays() {
+        RiderState state = service.riderState();
+        assertFalse(state.offers().isEmpty());
+        RiderOffer offer = state.offers().get(0);
+        int total = service.snapshot().totalBikes();
+        state = service.acceptRide(offer.id());
+        assertNotNull(state.activeRide());
+        assertThrows(ResponseStatusException.class, () -> service.acceptRide(offer.id()));
+        state = service.completeRide(state.activeRide().id());
+        assertNull(state.activeRide());
+        assertEquals(1, state.completedRides());
+        assertEquals(offer.amountCents(), state.walletCents());
+        assertEquals(total, service.snapshot().totalBikes());
+        assertEquals("COMPLETED", state.history().get(0).status());
+    }
+
     @Test void pickupAndArrivalConserveBikesAndRejectRepeatedStart() {
         Task t = service.generate().tasks().stream().filter(task -> task.sequence() == 1).findFirst().orElseThrow();
         int initialDestination = service.snapshot().regions().stream().filter(r -> r.id() == t.destinationId()).findFirst().orElseThrow().stock();

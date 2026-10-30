@@ -59,7 +59,7 @@ public class DispatchService {
     public synchronized Snapshot reset(String scenario) {
         if (!DemandModel.SCENARIOS.contains(scenario)) throw error("未知场景");
         return tx.execute(status -> {
-            db.update("DELETE FROM dispatch_tasks"); db.update("DELETE FROM dispatch_trips"); db.update("DELETE FROM regions");
+            db.update("DELETE FROM dispatch_tasks"); db.update("DELETE FROM dispatch_trips"); db.update("DELETE FROM rider_rides"); db.update("DELETE FROM regions");
             Object[][] rows = {
                 {1,"西门外示范点","gate",18,70,28,620.,355.},
                 {2,"兴业北街接驳点","metro",14,65,25,405.,370.},
@@ -455,6 +455,83 @@ public class DispatchService {
             if (!stops.isEmpty()) kept.add(new RouteOptimizer.Route(route.vehicle(), stops));
         }
         return kept;
+    }
+
+    public synchronized RiderState riderState() {
+        Snapshot snapshot = snapshot();
+        List<RegionView> sources = snapshot.regions().stream()
+                .filter(view -> view.surplus() > 0)
+                .sorted(Comparator.comparingInt(RegionView::surplus).reversed())
+                .toList();
+        List<RegionView> targets = snapshot.regions().stream()
+                .filter(view -> view.shortage() > 0)
+                .sorted(Comparator.comparingInt(RegionView::shortage).reversed())
+                .toList();
+        List<RiderOffer> offers = new ArrayList<>();
+        Set<Integer> usedTargets = new HashSet<>();
+        for (RegionView target : targets) {
+            RegionView best = null; double bestKm = Double.MAX_VALUE;
+            for (RegionView source : sources) {
+                if (source.id() == target.id()) continue;
+                double km = haversine(source.latitude(), source.longitude(), target.latitude(), target.longitude());
+                if (km < bestKm) { bestKm = km; best = source; }
+            }
+            if (best == null || !usedTargets.add(target.id())) continue;
+            offers.add(new RiderOffer(best.id() + "-" + target.id(), best.id(), target.id(), riderRewardCents(bestKm), round1(bestKm)));
+            if (offers.size() >= 4) break;
+        }
+        int wallet = db.queryForObject("SELECT COALESCE(SUM(amount_cents),0) FROM rider_rides WHERE status='COMPLETED'", Integer.class);
+        int completed = db.queryForObject("SELECT COUNT(*) FROM rider_rides WHERE status='COMPLETED'", Integer.class);
+        List<RiderRide> history = db.query("SELECT * FROM rider_rides WHERE status='COMPLETED' ORDER BY completed_minute DESC, id DESC LIMIT 8", (rs, row) -> riderRide(rs));
+        return new RiderState(wallet, completed, offers, activeRide(), history);
+    }
+
+    public synchronized RiderState acceptRide(String offerId) {
+        if (activeRide() != null) throw error("已有一笔进行中的骑行，请先完成");
+        RiderOffer offer = riderState().offers().stream().filter(item -> item.id().equals(offerId)).findFirst()
+                .orElseThrow(() -> error("该调度悬赏已失效，请刷新"));
+        Region source = region(offer.fromId());
+        if (source.stock() < 1) throw error("取车点已经没有可用车辆");
+        String id = "RIDE-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        db.update("INSERT INTO rider_rides(id,from_region,to_region,amount_cents,status,created_minute) VALUES (?,?,?,?,?,?)",
+                id, offer.fromId(), offer.toId(), offer.amountCents(), "ACTIVE", minute());
+        return riderState();
+    }
+
+    public synchronized RiderState completeRide(String rideId) {
+        RiderRide ride = activeRide();
+        if (ride == null || !ride.id().equals(rideId)) throw error("没有进行中的骑行");
+        return tx.execute(status -> {
+            Region source = region(ride.fromId());
+            Region destination = region(ride.toId());
+            if (source.stock() < 1) throw error("取车点已经没有可用车辆");
+            if (destination.stock() + 1 > destination.capacity()) throw error("目的区域已经停满，请换一个悬赏");
+            db.update("UPDATE regions SET stock=stock-1 WHERE id=?", source.id());
+            db.update("UPDATE regions SET stock=stock+1 WHERE id=?", destination.id());
+            db.update("UPDATE rider_rides SET status='COMPLETED',completed_minute=? WHERE id=?", minute(), ride.id());
+            return riderState();
+        });
+    }
+
+    private RiderRide activeRide() {
+        List<RiderRide> rows = db.query("SELECT * FROM rider_rides WHERE status='ACTIVE' ORDER BY created_minute DESC, id DESC LIMIT 1", (rs, row) -> riderRide(rs));
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private static RiderRide riderRide(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new RiderRide(rs.getString("id"), rs.getInt("from_region"), rs.getInt("to_region"), rs.getInt("amount_cents"),
+                rs.getString("status"), rs.getInt("created_minute"), (Integer) rs.getObject("completed_minute"));
+    }
+
+    private static int riderRewardCents(double km) {
+        return Math.min(800, 200 + (int) Math.round(km * 90));
+    }
+
+    private static double haversine(double lat1, double lon1, double lat2, double lon2) {
+        double dLat = Math.toRadians(lat2 - lat1), dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return 6371.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
     private static String clock(int minute) {

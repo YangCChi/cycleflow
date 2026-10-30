@@ -43,6 +43,7 @@ AMAP_WEB_KEY=你的Web服务Key
 
 ## 已实现
 
+- 骑行赚奖励（C 端）：普通用户视角，从富余站点取车、骑到缺车站点，完成悬赏后奖励到账；累计收益与历史记录在页面展示。
 - 运营总览：一行状态摘要、高德地图（可回退 OpenStreetMap）真实街道底图、补车优先级；场景切换、时钟与播放收进「演示控制」弹窗。
 - 停车区域：真实地图选点联动库存详情与预测入口；支持搜索、类型筛选、修改名称、停车容量及安全库存，保存至后端。窄屏下区域表格改为可直接操作的卡片。
 - 需求预测：按场景规则计算未来借还量、两小时曲线和分时段供需余额。
@@ -102,7 +103,7 @@ scripts/    启动与校验脚本
 docs/       规划与验收记录
 ```
 
-API：`GET /api/health`、`GET /api/state`、`PATCH /api/regions/{id}`、`GET /api/regions/{id}/forecast`、`POST /api/dispatch/generate`、`POST /api/dispatch/{id}/start`、`POST /api/dispatch/{id}/cancel`、`POST /api/simulation/advance`、`POST /api/simulation/reset`、`GET /api/experiments?seed=42`、`GET /api/experiments/summary?seed=42&runs=5`、`GET /api/road-matrix`、`POST /api/road-matrix/refresh`、`GET /api/dispatch/compare`、`GET /api/dispatch/compare/summary`。
+API：`GET /api/health`、`GET /api/state`、`GET /api/rider/state`、`POST /api/rider/accept/{offerId}`、`POST /api/rider/complete/{rideId}`、`PATCH /api/regions/{id}`、`GET /api/regions/{id}/forecast`、`POST /api/dispatch/generate`、`POST /api/dispatch/{id}/start`、`POST /api/dispatch/{id}/cancel`、`POST /api/simulation/advance`、`POST /api/simulation/reset`、`GET /api/experiments?seed=42`、`GET /api/experiments/summary?seed=42&runs=5`、`GET /api/road-matrix`、`POST /api/road-matrix/refresh`、`GET /api/dispatch/compare`、`GET /api/dispatch/compare/summary`。
 
 ## 后续方向
 

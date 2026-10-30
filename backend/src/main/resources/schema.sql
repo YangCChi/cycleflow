@@ -28,3 +28,10 @@ CREATE TABLE IF NOT EXISTS dispatch_trips (
 ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS pickup_seq INT;
 ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS delivery_seq INT;
 ALTER TABLE dispatch_tasks ADD COLUMN IF NOT EXISTS deadline_minute INT;
+
+CREATE TABLE IF NOT EXISTS rider_rides (
+ id VARCHAR(40) PRIMARY KEY, from_region INT NOT NULL, to_region INT NOT NULL,
+ amount_cents INT NOT NULL, status VARCHAR(12) NOT NULL,
+ created_minute INT NOT NULL, completed_minute INT,
+ FOREIGN KEY(from_region) REFERENCES regions(id), FOREIGN KEY(to_region) REFERENCES regions(id)
+);
