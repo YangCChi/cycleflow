@@ -75,6 +75,10 @@ class DispatchServiceTest {
         assertEquals(offer.amountCents(), service.riderRecords().walletCents());
         assertEquals(4, service.appUsers().size());
         assertTrue(service.appUsers().get(0).walletCents() >= offer.amountCents());
+        int before = service.riderWallet(login.token()).balanceCents();
+        assertEquals(before + 1000, service.topup(login.token(), 1000).balanceCents());
+        assertEquals(before + 500, service.withdraw(login.token(), 500).balanceCents());
+        assertThrows(ResponseStatusException.class, () -> service.withdraw(login.token(), 999999));
         service.logout(login.token());
         assertThrows(ResponseStatusException.class, () -> service.riderState(login.token()));
     }

@@ -5,6 +5,7 @@ import RiderMap from './RiderMap.vue'
 
 const state = ref(null)
 const regions = ref([])
+const walletInfo = ref(null)
 const token = ref(localStorage.getItem('cycleflow_rider_token') || '')
 const user = ref(JSON.parse(localStorage.getItem('cycleflow_rider_user') || 'null'))
 const loginName = ref('rider01'), loginPassword = ref('123456'), loginError = ref('')
@@ -21,6 +22,8 @@ const collapsedOffset = ref(0)
 let toastTimer, startY = 0, startExpanded = false, moved = false
 
 const wallet = computed(() => ((state.value?.walletCents || 0) / 100).toFixed(2))
+const balance = computed(() => ((walletInfo.value?.balanceCents || 0) / 100).toFixed(2))
+const walletTypeNames = { REWARD: '奖励到账', TOPUP: '充值', WITHDRAW: '提现' }
 const offers = computed(() => state.value?.offers || [])
 const loggedIn = computed(() => !!token.value)
 const regionName = id => regions.value.find(region => region.id === id)?.name || '站点 ' + id
@@ -81,6 +84,7 @@ function clearSession() {
   token.value = ''
   user.value = null
   state.value = null
+  walletInfo.value = null
   localStorage.removeItem('cycleflow_rider_token')
   localStorage.removeItem('cycleflow_rider_user')
 }
@@ -92,6 +96,7 @@ async function load() {
     const snapshot = await api('/state')
     regions.value = snapshot.regions
     state.value = token.value ? await api('/rider/state') : null
+    walletInfo.value = token.value ? await api('/rider/wallet') : null
   } catch (e) {
     if (e.status === 401) clearSession()
     else error.value = e.message
@@ -121,6 +126,18 @@ async function login() {
     expanded.value = false
     notify('欢迎回来，' + result.user.nickname)
   } catch (e) { loginError.value = e.message }
+  finally { busy.value = false }
+}
+
+async function walletAction(kind) {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const cents = kind === 'topup' ? 1000 : 500
+    walletInfo.value = await api(`/rider/wallet/${kind}`, 'POST', { amountCents: cents })
+    if (state.value) state.value.walletCents = walletInfo.value.balanceCents
+    notify(kind === 'topup' ? '充值 ¥10 已到账' : '提现 ¥5 已提交')
+  } catch (e) { notify(e.message) }
   finally { busy.value = false }
 }
 
@@ -196,6 +213,10 @@ onUnmounted(() => { clearTimeout(toastTimer); window.removeEventListener('resize
         </div>
 
         <template v-else>
+          <article class="rider-wallet-panel">
+            <div><span>可用余额</span><strong>¥{{ balance }}</strong></div>
+            <div class="rider-wallet-actions"><button class="rider-btn" :disabled="busy" @click="walletAction('topup')">充值 ¥10</button><button class="rider-btn" :disabled="busy" @click="walletAction('withdraw')">提现 ¥5</button></div>
+          </article>
           <div v-if="!state?.activeRide" class="rider-sheet-head"><div><h1>附近可接的调度悬赏</h1><p>把车骑到缺车点，完成后奖励到账</p></div><span>{{ offers.length }}</span></div>
 
           <article v-if="state?.activeRide" class="rider-active">
@@ -213,12 +234,12 @@ onUnmounted(() => { clearTimeout(toastTimer); window.removeEventListener('resize
             </article>
           </div>
 
-          <template v-if="state?.history.length">
-            <div class="rider-section"><h2>最近完成</h2><span>{{ state.completedRides }} 次</span></div>
+          <template v-if="walletInfo?.entries?.length">
+            <div class="rider-section"><h2>钱包流水</h2><span>余额 ¥{{ balance }}</span></div>
             <div class="rider-history">
-              <div v-for="ride in state.history" :key="ride.id" class="rider-history-row">
-                <span>{{ regionName(ride.fromId) }} <ArrowRight :size="12"/> {{ regionName(ride.toId) }}</span>
-                <strong>+¥{{ (ride.amountCents / 100).toFixed(1) }}</strong>
+              <div v-for="entry in walletInfo.entries" :key="entry.id" class="rider-history-row">
+                <span>{{ walletTypeNames[entry.type] || entry.type }}<template v-if="entry.note"> · {{ entry.note }}</template></span>
+                <strong :class="{ negative: entry.type === 'WITHDRAW' }">{{ entry.type === 'WITHDRAW' ? '-' : '+' }}¥{{ (entry.amountCents / 100).toFixed(1) }}</strong>
               </div>
             </div>
           </template>

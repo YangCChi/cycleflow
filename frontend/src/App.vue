@@ -33,7 +33,8 @@ const adminName = ref('operator'), adminPassword = ref('123456'), adminError = r
 const adminRoleNames = { ADMIN: '管理员', OPERATOR: '运营', VIEWER: '只读' }
 const canOperate = computed(() => !adminUser.value || adminUser.value.role !== 'VIEWER')
 const riderRecords = ref(null)
-const appUsers = ref([]), userSearch = ref(''), dataLoading = ref(false)
+const appUsers = ref([]), walletEntries = ref([]), userSearch = ref(''), dataLoading = ref(false)
+const walletTypeNames = { REWARD: '奖励到账', TOPUP: '充值', WITHDRAW: '提现' }
 const filteredUsers = computed(() => appUsers.value.filter(user => !userSearch.value || `${user.nickname}${user.username}${user.phone}`.toLowerCase().includes(userSearch.value.toLowerCase())))
 const activeRiderCount = computed(() => (riderRecords.value?.rides || []).filter(ride => ride.status === 'ACTIVE').length)
 const userById = id => appUsers.value.find(user => user.id === id)?.nickname || '游客'
@@ -189,9 +190,10 @@ function onHash() { const id = hashId(); if (tabs.some(t => t.id === id)) curren
 async function loadData() {
   dataLoading.value = true
   try {
-    const [users, records] = await Promise.all([api('/data/users'), api('/rider/records')])
+    const [users, records, entries] = await Promise.all([api('/data/users'), api('/rider/records'), api('/wallet/entries')])
     appUsers.value = users
     riderRecords.value = records
+    walletEntries.value = entries
   } catch { /* keep last */ }
   finally { dataLoading.value = false }
 }
@@ -459,6 +461,18 @@ onUnmounted(() => { clearInterval(interval); clearTimeout(toastTimer); window.re
                 <p v-if="!filteredUsers.length" class="empty-table">没有匹配的账户。</p>
               </div>
               <div class="table-footer"><Info :size="16"/>演示账户统一密码为 123456，服务端仅保存 SHA-256 哈希；正式环境应改为 BCrypt/Argon2 并接入登录会话。</div>
+            </article>
+
+            <article class="panel table-panel">
+              <div class="table-toolbar"><div><strong>钱包流水</strong><span class="table-count">奖励 / 充值 / 提现</span></div><button class="text-button" @click="loadData">刷新</button></div>
+              <div class="list-rows">
+                <div v-for="entry in walletEntries" :key="entry.id" class="list-row">
+                  <span class="row-icon"><Bike :size="18"/></span>
+                  <div class="row-main"><strong>{{ userById(entry.userId) }} · {{ walletTypeNames[entry.type] || entry.type }}</strong><span>{{ time(entry.createdMinute) }}<template v-if="entry.note"> · {{ entry.note }}</template></span></div>
+                  <span :class="['rider-record-amount', { negative: entry.type === 'WITHDRAW' }]">{{ entry.type === 'WITHDRAW' ? '-' : '+' }}¥{{ (entry.amountCents / 100).toFixed(1) }}</span>
+                </div>
+                <p v-if="!walletEntries.length" class="empty-table">还没有钱包流水。</p>
+              </div>
             </article>
 
             <article class="panel table-panel">

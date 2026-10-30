@@ -732,3 +732,4 @@ dialog.modal[open]::backdrop{animation:backdrop-in .2s ease}
 .admin-login-rider{text-align:center;font-size:12px;color:var(--accent);text-decoration:none;margin-top:4px}
 .admin-logout{margin-left:auto;font-size:11px;color:var(--text-3)}
 .readonly-banner{margin-bottom:14px;padding:11px 15px;border-radius:12px;background:#eef2f7;border:1px solid #dfe6ef;color:#5b6b7c;font-size:12px;line-height:1.6}
+.rider-record-amount.negative{color:#b3441f}

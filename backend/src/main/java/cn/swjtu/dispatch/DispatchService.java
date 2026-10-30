@@ -555,7 +555,7 @@ public class DispatchService {
             int earned = own.stream().filter(ride -> ride.status().equals("COMPLETED")).mapToInt(RiderRide::amountCents).sum();
             Integer last = own.stream().filter(ride -> ride.completedMinute() != null).map(RiderRide::completedMinute).max(Integer::compare).orElse(null);
             return new AppUser(id, rs.getString("username"), rs.getString("nickname"), rs.getString("phone"), rs.getString("status"),
-                    rs.getInt("created_minute"), rs.getInt("bonus_cents") + earned, completed, active, last);
+                    rs.getInt("created_minute"), walletSummary(id).balanceCents(), completed, active, last);
         });
     }
 
@@ -654,10 +654,55 @@ public class DispatchService {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    private int userWallet(int userId) {
+    private int userWallet(int userId) { return walletSummary(userId).balanceCents(); }
+
+    public synchronized WalletSummary riderWallet(String token) { return walletSummary(userId(token)); }
+
+    public synchronized WalletSummary topup(String token, int cents) {
+        int userId = userId(token);
+        if (cents < 100 || cents > 50000) throw error("单次充值金额须在 1～500 元之间");
+        String id = "WALLET-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        db.update("INSERT INTO wallet_transactions(id,user_id,type,amount_cents,status,created_minute,note) VALUES (?,?,?,?,?,?,?)",
+                id, userId, "TOPUP", cents, "COMPLETED", minute(), "演示充值");
+        return walletSummary(userId);
+    }
+
+    public synchronized WalletSummary withdraw(String token, int cents) {
+        int userId = userId(token);
+        if (cents < 100) throw error("单次提现至少 1 元");
+        if (cents > walletSummary(userId).balanceCents()) throw error("余额不足");
+        String id = "WALLET-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        db.update("INSERT INTO wallet_transactions(id,user_id,type,amount_cents,status,created_minute,note) VALUES (?,?,?,?,?,?,?)",
+                id, userId, "WITHDRAW", cents, "COMPLETED", minute(), "提现到银行卡");
+        return walletSummary(userId);
+    }
+
+    private WalletSummary walletSummary(int userId) {
         Integer bonus = db.queryForObject("SELECT bonus_cents FROM rider_users WHERE id=?", Integer.class, userId);
-        Integer earned = db.queryForObject("SELECT COALESCE(SUM(amount_cents),0) FROM rider_rides WHERE user_id=? AND status='COMPLETED'", Integer.class, userId);
-        return (bonus == null ? 0 : bonus) + (earned == null ? 0 : earned);
+        List<RiderRide> rewards = db.query("SELECT * FROM rider_rides WHERE user_id=? AND status='COMPLETED'", (rs, row) -> riderRide(rs), userId);
+        List<WalletEntry> transactions = db.query("SELECT * FROM wallet_transactions WHERE user_id=?", (rs, row) ->
+                new WalletEntry(rs.getString("id"), rs.getInt("user_id"), rs.getString("type"), rs.getInt("amount_cents"), rs.getInt("created_minute"), rs.getString("note")), userId);
+        int reward = rewards.stream().mapToInt(RiderRide::amountCents).sum();
+        int topup = transactions.stream().filter(item -> item.type().equals("TOPUP")).mapToInt(WalletEntry::amountCents).sum();
+        int withdraw = transactions.stream().filter(item -> item.type().equals("WITHDRAW")).mapToInt(WalletEntry::amountCents).sum();
+        List<WalletEntry> entries = new ArrayList<>();
+        for (RiderRide ride : rewards) entries.add(new WalletEntry(ride.id(), userId, "REWARD", ride.amountCents(), ride.completedMinute() == null ? ride.createdMinute() : ride.completedMinute(), "顺路骑行奖励"));
+        entries.addAll(transactions);
+        entries.sort((a, b) -> b.createdMinute() != a.createdMinute() ? Integer.compare(b.createdMinute(), a.createdMinute()) : b.id().compareTo(a.id()));
+        if (entries.size() > 30) entries = new ArrayList<>(entries.subList(0, 30));
+        int base = bonus == null ? 0 : bonus;
+        return new WalletSummary(base + reward + topup - withdraw, base, reward, topup, withdraw, entries);
+    }
+
+    public synchronized List<WalletEntry> walletEntries() {
+        List<RiderRide> rewards = db.query("SELECT * FROM rider_rides WHERE status='COMPLETED'", (rs, row) -> riderRide(rs));
+        List<WalletEntry> transactions = db.query("SELECT * FROM wallet_transactions", (rs, row) ->
+                new WalletEntry(rs.getString("id"), rs.getInt("user_id"), rs.getString("type"), rs.getInt("amount_cents"), rs.getInt("created_minute"), rs.getString("note")));
+        List<WalletEntry> entries = new ArrayList<>();
+        for (RiderRide ride : rewards) entries.add(new WalletEntry(ride.id(), ride.userId() == null ? 1 : ride.userId(), "REWARD", ride.amountCents(), ride.completedMinute() == null ? ride.createdMinute() : ride.completedMinute(), "顺路骑行奖励"));
+        entries.addAll(transactions);
+        entries.sort((a, b) -> b.createdMinute() != a.createdMinute() ? Integer.compare(b.createdMinute(), a.createdMinute()) : b.id().compareTo(a.id()));
+        return entries.size() > 100 ? new ArrayList<>(entries.subList(0, 100)) : entries;
     }
 
     private AppUser appUser(int id) {

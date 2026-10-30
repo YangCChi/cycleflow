@@ -56,3 +56,9 @@ CREATE TABLE IF NOT EXISTS admin_sessions (
  token VARCHAR(64) PRIMARY KEY, admin_id INT NOT NULL, created_minute INT NOT NULL,
  FOREIGN KEY(admin_id) REFERENCES admin_users(id)
 );
+
+CREATE TABLE IF NOT EXISTS wallet_transactions (
+ id VARCHAR(40) PRIMARY KEY, user_id INT NOT NULL, type VARCHAR(12) NOT NULL,
+ amount_cents INT NOT NULL, status VARCHAR(12) NOT NULL, created_minute INT NOT NULL, note VARCHAR(120),
+ FOREIGN KEY(user_id) REFERENCES rider_users(id)
+);

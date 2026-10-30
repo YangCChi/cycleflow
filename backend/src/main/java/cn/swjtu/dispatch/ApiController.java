@@ -30,6 +30,10 @@ public class ApiController {
     @PostMapping("/rider/login") public RiderLogin login(@RequestBody Map<String,String> body) { return service.login(body.get("username"), body.get("password")); }
     @PostMapping("/rider/logout") public Map<String,Object> logout(@RequestHeader(value="X-Rider-Token", required=false) String token) { service.logout(token); return Map.of("ok", true); }
     @GetMapping("/rider/state") public RiderState riderState(@RequestHeader(value="X-Rider-Token", required=false) String token) { return service.riderState(token); }
+    @GetMapping("/rider/wallet") public WalletSummary riderWallet(@RequestHeader(value="X-Rider-Token", required=false) String token) { return service.riderWallet(token); }
+    @PostMapping("/rider/wallet/topup") public WalletSummary topup(@RequestHeader(value="X-Rider-Token", required=false) String token, @RequestBody Map<String,Integer> body) { return service.topup(token, body.getOrDefault("amountCents", 1000)); }
+    @PostMapping("/rider/wallet/withdraw") public WalletSummary withdraw(@RequestHeader(value="X-Rider-Token", required=false) String token, @RequestBody Map<String,Integer> body) { return service.withdraw(token, body.getOrDefault("amountCents", 1000)); }
+    @GetMapping("/wallet/entries") public List<WalletEntry> walletEntries(@RequestHeader(value="X-Admin-Token", required=false) String admin) { service.admin(admin); return service.walletEntries(); }
     @GetMapping("/rider/records") public RiderRecords riderRecords(@RequestHeader(value="X-Admin-Token", required=false) String admin) { service.admin(admin); return service.riderRecords(); }
     @GetMapping("/data/users") public List<AppUser> appUsers(@RequestHeader(value="X-Admin-Token", required=false) String admin) { service.admin(admin); return service.appUsers(); }
     @PostMapping("/rider/accept/{offerId}") public RiderState acceptRide(@RequestHeader(value="X-Rider-Token", required=false) String token, @PathVariable String offerId) { return service.acceptRide(token, offerId); }
